@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: 'Newsreader', 'Instrument Serif', Georgia, serif;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: #020617; /* slate-950 */
+  color: #f1f5f9; /* slate-100 */
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Slate Grey Theme Palette */
+html[data-theme="slate-grey"],
+body[data-theme="slate-grey"],
+[data-theme="slate-grey"] {
+  --color-slate-950: #1a2233;
+  --color-slate-900: #253347;
+  --color-slate-800: #394d68;
+  --color-slate-700: #4f6789;
+  --color-slate-600: #6f88ad;
+  --color-slate-500: #9cb1cb;
+  --color-slate-400: #c6d4e4;
+  --color-slate-300: #e2eaf3;
+  --color-slate-200: #f1f5f9;
+  --color-slate-100: #ffffff;
+}
+
+body[data-theme="slate-grey"] {
+  background-color: #1a2233;
+}
+

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.data/
+*.zip
+.DS_Store
+.idea/
+BACKUP_WORKING_VERSION/
+Users/
+notification_settings.json
+mqtt_config.json
+.env
+SECURITY_NOTES.md

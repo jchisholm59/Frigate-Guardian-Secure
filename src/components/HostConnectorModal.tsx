@@ -75,12 +75,12 @@ export const HostConnectorModal: React.FC<HostConnectorModalProps> = ({
   }, [isOpen, initialTab]);
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [name, setName] = useState('');
-  const [url, setUrl] = useState('http://192.168.1.100:5000');
+  const [url, setUrl] = useState('http://localhost:5000');
   const [apiKey, setApiKey] = useState('');
 
   // MQTT form state
   const [mqttEnabled, setMqttEnabled] = useState(true);
-  const [mqttHost, setMqttHost] = useState('192.168.1.100');
+  const [mqttHost, setMqttHost] = useState('localhost');
   const [mqttPort, setMqttPort] = useState(1883);
   const [mqttProtocol, setMqttProtocol] = useState<'mqtt' | 'mqtts' | 'ws' | 'wss'>('mqtt');
   const [mqttTopic, setMqttTopic] = useState('frigate');

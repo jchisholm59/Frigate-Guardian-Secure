@@ -93,9 +93,11 @@ function savePersistentSettings() {
 function getAiClient(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
+    console.warn('[AI] Warning: GEMINI_API_KEY not found in environment. AI features will use basic fallback template.');
     return null;
   }
   if (!aiClient) {
+    console.log('[AI] Success: GEMINI_API_KEY found. Initializing Gemini 1.5 Flash client...');
     aiClient = new GoogleGenAI({ apiKey });
   }
   return aiClient;
@@ -329,9 +331,9 @@ Respond in valid JSON format only with keys:
   "recommendedAction": "..."
 }`;
 
-      console.log(`[Gemini] Generating event description for ${camera} (${label}) using gemini-1.5-flash...`);
+      console.log(`[Gemini] Generating event description using gemini-3.7-flash...`);
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3.7-flash',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
@@ -386,10 +388,10 @@ Return a JSON object with:
   "explanation": "Why these match the query in 1 short sentence."
 }`;
 
-      console.log(`[Gemini] Performing semantic search for: "${query}" using gemini-1.5-flash...`);
-      console.log(`[Gemini] Performing semantic search for: "${query}" using gemini-1.5-flash...`);
+      console.log(`[Gemini] Performing semantic search using gemini-3.7-flash...`);
+      console.log(`[Gemini] Performing semantic search using gemini-3.7-flash...`);
       const response = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3.7-flash',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',

@@ -329,9 +329,9 @@ Respond in valid JSON format only with keys:
   "recommendedAction": "..."
 }`;
 
-      console.log(`[Gemini] Generating event description for ${camera} (${label}) using gemini-3.8-flash...`);
+      console.log(`[Gemini] Generating event description for ${camera} (${label}) using gemini-1.5-flash...`);
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-1.5-flash',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
@@ -386,10 +386,10 @@ Return a JSON object with:
   "explanation": "Why these match the query in 1 short sentence."
 }`;
 
-      console.log(`[Gemini] Performing semantic search for: "${query}" using gemini-3.8-flash...`);
-      console.log(`[Gemini] Performing semantic search for: "${query}" using gemini-3.8-flash...`);
+      console.log(`[Gemini] Performing semantic search for: "${query}" using gemini-1.5-flash...`);
+      console.log(`[Gemini] Performing semantic search for: "${query}" using gemini-1.5-flash...`);
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-1.5-flash',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
@@ -1301,7 +1301,8 @@ Return a JSON object with:
 
   // Helper to send Slack notification
   async function sendSlackNotification(webhookUrl: string, event: any, customOptions: any = {}) {
-    if (!webhookUrl || !webhookUrl.startsWith('http')) {
+    const targetUrl = process.env.SLACK_WEBHOOK_URL || webhookUrl;
+    if (!targetUrl || !targetUrl.startsWith('http')) {
       throw new Error('Invalid Slack Webhook URL. Must start with http:// or https://');
     }
     const labelUpper = (event.label || 'object').toUpperCase();
@@ -1375,7 +1376,7 @@ Return a JSON object with:
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
     try {
-      const resp = await fetch(webhookUrl, {
+      const resp = await fetch(targetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1396,7 +1397,8 @@ Return a JSON object with:
 
   // Helper to send Discord notification
   async function sendDiscordNotification(webhookUrl: string, event: any, customOptions: any = {}) {
-    if (!webhookUrl || !webhookUrl.startsWith('http')) {
+    const targetUrl = process.env.DISCORD_WEBHOOK_URL || webhookUrl;
+    if (!targetUrl || !targetUrl.startsWith('http')) {
       throw new Error('Invalid Discord Webhook URL. Must start with http:// or https://');
     }
     const labelUpper = (event.label || 'object').toUpperCase();
@@ -1470,13 +1472,13 @@ Return a JSON object with:
         formData.append('payload_json', JSON.stringify(payload));
         formData.append('file', new Blob([snapshotBuffer], { type: 'image/jpeg' }), 'snapshot.jpg');
 
-        resp = await fetch(webhookUrl, {
+        resp = await fetch(targetUrl, {
           method: 'POST',
           body: formData,
           signal: controller.signal,
         });
       } else {
-        resp = await fetch(webhookUrl, {
+        resp = await fetch(targetUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),

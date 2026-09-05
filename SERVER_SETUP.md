@@ -42,6 +42,27 @@ PM2 is a professional process manager. it will keep the app running forever and 
 
 ---
 
+## 🧠 Local AI Support (Ollama)
+Frigate Guardian now supports **local AI** using Ollama. This allows for unlimited, private, and fast event summaries and searches without needing a Google API key.
+
+1.  **Install Ollama** on your server: [ollama.com](https://ollama.com)
+2.  **Pull a model** (we recommend `llama3` or `mistral`):
+    ```bash
+    ollama pull llama3
+    ```
+3.  **Update your .env file** in the project folder:
+    ```text
+    OLLAMA_URL=http://localhost:11434
+    OLLAMA_MODEL=llama3
+    ```
+4.  **Restart the server:**
+    ```bash
+    pm2 restart frigate-guardian
+    ```
+    *If no OLLAMA_URL is provided, the system will automatically fall back to Gemini.*
+
+---
+
 ## 📺 Option 2: Using Screen (The Quick Way)
 If you don't want to install extra tools, use `screen` to create a virtual terminal.
 

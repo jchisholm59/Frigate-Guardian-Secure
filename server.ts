@@ -109,6 +109,42 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Helper for Local Ollama or Gemini AI calls
+  async function performAiQuery(prompt: string, isJson: boolean = true) {
+    const ollamaUrl = process.env.OLLAMA_URL; // e.g. http://localhost:11434
+    const ollamaModel = process.env.OLLAMA_MODEL || 'llama3';
+
+    if (ollamaUrl) {
+      try {
+        console.log(`[AI] Using local Ollama (${ollamaModel}) at ${ollamaUrl}...`);
+        const response = await fetch(`${ollamaUrl}/api/generate`, {
+          method: 'POST',
+          body: JSON.stringify({
+            model: ollamaModel,
+            prompt: prompt,
+            stream: false,
+            format: isJson ? 'json' : undefined
+          })
+        });
+        const data = await response.json();
+        return data.response;
+      } catch (err: any) {
+        console.warn(`[AI] Ollama failed: ${err.message}. Falling back...`);
+      }
+    }
+
+    const ai = getAiClient();
+    if (ai) {
+      console.log(`[AI] Using Google Gemini 3.1 Flash-Lite...`);
+      const model = ai.getGenerativeModel({ model: 'gemini-3.1-flash-lite-preview' });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      return response.text();
+    }
+
+    return null;
+  }
+
   app.post('/api/notifications/settings', (req, res) => {
     const { settings } = req.body;
     if (settings) {
@@ -298,20 +334,10 @@ async function startServer() {
   });
 
   // AI Security Event Summarizer with Gemini 3.8 Flash
-  app.post('/api/gemini/describe-event', async (req, res) => {
+  // Unified AI Event Description (Ollama or Gemini)
+  app.post('/api/gemini/summarize-event', async (req, res) => {
     try {
       const { camera, label, score, zones, duration, time, contextInfo } = req.body;
-      const ai = getAiClient();
-
-      if (!ai) {
-        // Fallback local description if no API key provided
-        return res.json({
-          summary: `Detected a ${label} (${Math.round(score * 100)}% confidence) at ${camera.replace('_', ' ')} spanning ${zones?.join(', ') || 'unassigned zone'}. Event active for ${duration}s.`,
-          threatLevel: label === 'person' && zones?.includes('porch_doorstep') ? 'medium' : 'low',
-          recommendedAction: label === 'person' ? 'Check front door snapshot for courier/visitor.' : 'Normal automated tracking.',
-          isAIGenerated: false,
-        });
-      }
 
       const prompt = `You are the Frigate NVR Smart AI Vision Security Analyst.
 Given this camera event:
@@ -331,23 +357,29 @@ Respond in valid JSON format only with keys:
   "recommendedAction": "..."
 }`;
 
-      console.log(`[Gemini] Generating event description using gemini-3.7-flash...`);
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.7-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
+      const aiResponse = await performAiQuery(prompt, true);
 
-      const text = response.text?.trim() || '{}';
+      if (!aiResponse) {
+        // Fallback local description
+        return res.json({
+          summary: `Detected a ${label} (${Math.round(score * 100)}% confidence) at ${camera.replace('_', ' ')} spanning ${zones?.join(', ') || 'unassigned zone'}. Event active for ${duration}s.`,
+          threatLevel: label === 'person' && zones?.includes('porch_doorstep') ? 'medium' : 'low',
+          recommendedAction: label === 'person' ? 'Check front door snapshot for courier/visitor.' : 'Normal automated tracking.',
+          isAIGenerated: false,
+        });
+      }
+
+      let text = aiResponse.trim();
+      if (text.startsWith('```json')) text = text.replace(/```json|```/g, '').trim();
+      else if (text.startsWith('```')) text = text.replace(/```/g, '').trim();
+
       const parsed = JSON.parse(text);
       res.json({
         ...parsed,
         isAIGenerated: true,
       });
     } catch (error: any) {
-      console.error('Error generating event description with Gemini:', error);
+      console.error('Error generating event description with AI:', error);
       res.status(500).json({
         error: error.message || 'Failed to generate AI analysis',
         fallback: 'Event logged in Frigate timeline.',
@@ -355,13 +387,12 @@ Respond in valid JSON format only with keys:
     }
   });
 
-  // Semantic Event Search with Gemini 3.8 Flash
+  // Unified Semantic Event Search (Ollama or Gemini)
   app.post('/api/gemini/search-events', async (req, res) => {
     try {
       const { query, events } = req.body;
-      const ai = getAiClient();
 
-      if (!ai || !query || !Array.isArray(events)) {
+      if (!query || !Array.isArray(events)) {
         return res.json({ matchedEventIds: [] });
       }
 
@@ -370,7 +401,7 @@ User search query: "${query}"
 
 Here are the candidate events:
 ${JSON.stringify(
-  events.slice(0, 25).map((e) => ({
+  events.slice(0, 30).map((e) => ({
     id: e.id,
     camera: e.camera,
     label: e.label,
@@ -388,17 +419,16 @@ Return a JSON object with:
   "explanation": "Why these match the query in 1 short sentence."
 }`;
 
-      console.log(`[Gemini] Performing semantic search using gemini-3.7-flash...`);
-      console.log(`[Gemini] Performing semantic search using gemini-3.7-flash...`);
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.7-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-        },
-      });
+      const aiResponse = await performAiQuery(prompt, true);
 
-      const text = response.text?.trim() || '{}';
+      if (!aiResponse) {
+        return res.json({ matchedIds: [], explanation: "AI service currently unavailable." });
+      }
+
+      let text = aiResponse.trim();
+      if (text.startsWith('```json')) text = text.replace(/```json|```/g, '').trim();
+      else if (text.startsWith('```')) text = text.replace(/```/g, '').trim();
+
       const parsed = JSON.parse(text);
       res.json(parsed);
     } catch (err: any) {

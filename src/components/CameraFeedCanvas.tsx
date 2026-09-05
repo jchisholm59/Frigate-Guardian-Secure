@@ -146,13 +146,13 @@ export const CameraFeedCanvas: React.FC<CameraFeedCanvasProps> = ({
   };
 
   return (
-    <div className={`relative overflow-hidden bg-zinc-950 ${className}`} style={{ aspectRatio: '16/9' }}>
+    <div className={`relative overflow-hidden bg-black flex items-center justify-center ${className}`} style={{ aspectRatio: '16/9' }}>
       {/* 100% Reliable Native MJPEG Streaming */}
       {camera.isLiveStream && !isPaused && (
         <img
           src={streamUrl}
           alt={camera.name}
-          className="absolute inset-0 w-full h-full object-cover"
+          className="max-w-full max-h-full w-auto h-auto object-contain"
           style={{
             transform: `scale(${zoom}) translate(${panX}px, ${panY}px)`,
             transformOrigin: 'center',
@@ -167,7 +167,7 @@ export const CameraFeedCanvas: React.FC<CameraFeedCanvasProps> = ({
       <canvas
         ref={canvasRef}
         onClick={handleCanvasClick}
-        className="absolute inset-0 w-full h-full select-none cursor-pointer z-10"
+        className="absolute w-full h-full select-none cursor-pointer z-10 object-contain pointer-events-none"
       />
     </div>
   );

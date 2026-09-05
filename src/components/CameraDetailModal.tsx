@@ -6,6 +6,7 @@ import {
   Camera,
   Copy,
   Check,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface CameraDetailModalProps {
@@ -33,9 +34,35 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
     }
   };
 
-  const handleCaptureSnapshot = () => {
-    setSnapshotSuccess(true);
-    setTimeout(() => setSnapshotSuccess(false), 2500);
+  const handleCaptureSnapshot = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+
+    // Attempt real snapshot download
+    if (camera.frigate_url) {
+      const snapshotUrl = `/api/frigate/proxy/image?serverUrl=${encodeURIComponent(camera.frigate_url)}&path=${encodeURIComponent(`/api/${camera.id}/latest.jpg`)}`;
+
+      try {
+        const response = await fetch(snapshotUrl);
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `snapshot-${camera.id}-${Date.now()}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+
+        setSnapshotSuccess(true);
+        setTimeout(() => setSnapshotSuccess(false), 3000);
+      } catch (err) {
+        console.error('Failed to download snapshot:', err);
+      }
+    } else {
+      // Fallback for simulated cameras
+      setSnapshotSuccess(true);
+      setTimeout(() => setSnapshotSuccess(false), 2500);
+    }
   };
 
   return (
@@ -134,18 +161,20 @@ export const CameraDetailModal: React.FC<CameraDetailModalProps> = ({
         </div>
 
         {/* Video Canvas Container */}
-        <div className="relative bg-black flex-1 overflow-hidden flex items-center justify-center min-h-[380px]">
-          <CameraFeedCanvas
-            camera={camera}
-            zoom={1}
-            panX={0}
-            panY={0}
-            showBoundingBoxes={showBoxes}
-            showZones={showZones}
-            showMotionMasks={showMasks}
-            showHud={true}
-            className="w-full h-full"
-          />
+        <div className="relative bg-black flex-1 min-h-0 flex items-center justify-center p-4 sm:p-6 overflow-hidden">
+          <div className="w-full h-full max-w-full max-h-full flex items-center justify-center pointer-events-none">
+            <CameraFeedCanvas
+              camera={camera}
+              zoom={1}
+              panX={0}
+              panY={0}
+              showBoundingBoxes={showBoxes}
+              showZones={showZones}
+              showMotionMasks={showMasks}
+              showHud={true}
+              className="w-auto h-auto max-w-full max-h-full aspect-video shadow-2xl rounded-lg border border-slate-800 bg-zinc-900 pointer-events-auto"
+            />
+          </div>
 
           {/* Snapshot notification toast */}
           {snapshotSuccess && (

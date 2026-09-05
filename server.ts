@@ -136,10 +136,14 @@ async function startServer() {
     const ai = getAiClient();
     if (ai) {
       console.log(`[AI] Using Google Gemini 3.1 Flash-Lite...`);
-      const model = ai.getGenerativeModel({ model: 'gemini-3.1-flash-lite-preview' });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      return response.text();
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite-preview',
+        contents: prompt,
+        config: {
+          responseMimeType: 'application/json',
+        },
+      });
+      return response.text;
     }
 
     return null;

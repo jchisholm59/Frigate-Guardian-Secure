@@ -62,6 +62,32 @@ npm run build
 pm2 start dist/server.cjs --name frigate-guardian
 ```
 
+### 4. Running with Docker (Recommended)
+You can also run Frigate Guardian using Docker, which is the recommended way for production deployment.
+
+**Quick Start:**
+1.  **Configure environment:** Create a `.env` file (you can use `.env.example` as a template) and add your `GEMINI_API_KEY` and other credentials.
+2.  **Start the container:**
+    ```bash
+    docker compose up -d
+    ```
+
+The application will be available at `http://localhost:3000`.
+
+**Persistent Data:**
+Docker will automatically create a volume to persist your settings:
+- `guardian_data`: Persists `notification_settings.json` and `mqtt_config.json` in the `/app/data` directory inside the container.
+
+**Troubleshooting & Maintenance:**
+- **View logs:** `docker logs -f frigate-guardian`
+- **Restart:** `docker compose restart`
+- **Full Reset (Wipes all settings & credentials):**
+  If you want to perform a truly clean install and wipe all persisted settings from the Docker volume:
+  ```bash
+  docker compose down -v
+  docker compose up -d --build
+  ```
+
 ---
 
 ## 🔒 Security & Privacy

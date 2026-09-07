@@ -28,8 +28,7 @@ const archiver = require('archiver');
 let aiClient: GoogleGenAI | null = null;
 
 // Server-side persistent settings for background notifications
-// Using the user's home directory to avoid triggering server watchers in the project directory
-const DATA_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '/tmp', '.frigate-guardian');
+const DATA_DIR = process.env.DATA_DIR || path.join(process.env.HOME || process.env.USERPROFILE || '/tmp', '.frigate-guardian');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const SETTINGS_FILE = path.join(DATA_DIR, 'notification_settings.json');

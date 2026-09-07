@@ -1,0 +1,20 @@
+services:
+  frigate-guardian:
+    build: .
+    container_name: frigate-guardian
+    restart: always
+    network_mode: host
+    privileged: true
+    environment:
+      - PORT=3000
+      - DATA_DIR=/app/data
+      - NODE_ENV=production
+      # - GEMINI_API_KEY=your-api-key-here
+    volumes:
+      # Persist configuration data
+      - guardian_data:/app/data
+    env_file:
+      - .env
+
+volumes:
+  guardian_data:

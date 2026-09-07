@@ -1,0 +1,5 @@
+- [x] Modify `server.ts` to support `DATA_DIR` env var
+- [x] Create `Dockerfile`
+- [x] Create `.dockerignore`
+- [x] Create `docker-compose.yml`
+- [x] Update `README.md` with Docker instructions

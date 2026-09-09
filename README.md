@@ -47,12 +47,19 @@ npm install
 ```
 
 ### 2. Configure Secrets
-Create a `.env` file in the root directory (use `.env.example` as a template):
+Create your environment files in the root directory (use `.env.example` as a template).
+
+> [!IMPORTANT]
+> To prevent AI development environments from overwriting your custom settings, this project uses two environment files:
+> 1.  **.env**: Managed automatically by the IDE (stores your `GEMINI_API_KEY`).
+> 2.  **guardian.env**: Created by you for all other secrets (Gmail, Slack, Discord, etc.).
+
+**Example `guardian.env`:**
 ```text
 GMAIL_USER=your-email@gmail.com
 GMAIL_PASSWORD=your-google-app-password
 GMAIL_RECIPIENT=your-alerts-recipient@gmail.com
-GEMINI_API_KEY=your-gemini-key
+# GEMINI_API_KEY is handled in .env
 ```
 
 ### 3. Run for Production (Recommended)

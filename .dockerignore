@@ -4,6 +4,7 @@ dist
 .idea
 *.log
 .env
+guardian.env
 ios
 android
 .data

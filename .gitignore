@@ -9,4 +9,5 @@ Users/
 notification_settings.json
 mqtt_config.json
 .env
+guardian.env
 SECURITY_NOTES.md

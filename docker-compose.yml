@@ -15,6 +15,7 @@ services:
       - guardian_data:/app/data
     env_file:
       - .env
+      - guardian.env
 
 volumes:
   guardian_data:

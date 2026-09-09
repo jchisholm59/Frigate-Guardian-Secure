@@ -1,5 +1,5 @@
 import express from 'express';
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import http from 'http';
 import https from 'https';
 import path from 'path';
@@ -20,6 +20,12 @@ const __filename = typeof import.meta.url !== 'undefined'
 const __dirname = typeof __dirname !== 'undefined'
   ? __dirname
   : (__filename ? path.dirname(__filename) : process.cwd());
+
+// Load environment variables
+dotenv.config(); // Loads .env
+if (fs.existsSync(path.join(__dirname, 'guardian.env'))) {
+  dotenv.config({ path: path.join(__dirname, 'guardian.env'), override: true });
+}
 
 // Fix for 'require' in ESM
 const require = createRequire(import.meta.url || `file://${__filename}`);

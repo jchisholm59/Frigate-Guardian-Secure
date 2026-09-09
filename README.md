@@ -66,7 +66,9 @@ pm2 start dist/server.cjs --name frigate-guardian
 You can also run Frigate Guardian using Docker, which is the recommended way for production deployment.
 
 **Quick Start:**
-1.  **Configure environment:** Create a `.env` file (you can use `.env.example` as a template) and add your `GEMINI_API_KEY` and other credentials.
+1.  **Configure environment:** 
+    - The IDE will manage your `GEMINI_API_KEY` automatically in the `.env` file.
+    - Create a file named `guardian.env` for your custom secrets (use `.env.example` as a template).
 2.  **Start the container:**
     ```bash
     docker compose up -d

@@ -22,8 +22,6 @@ import {
   Activity,
   Plus,
 } from 'lucide-react';
-  Waves,
-} from 'lucide-react';
 import { NotificationSettings, NotificationLog, BirdNetConfig, TidalStationConfig, TidalStation } from '../types';
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {

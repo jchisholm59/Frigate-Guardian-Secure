@@ -184,9 +184,10 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
   };
 
   const updateTides = (partial: Partial<TidalStationConfig>) => {
+    const currentTides = localSettings.tides || { stations: [], refreshIntervalMinutes: 60 };
     const updated = {
       ...localSettings,
-      tides: { ...(localSettings.tides || DEFAULT_NOTIFICATION_SETTINGS.tides!), ...partial },
+      tides: { ...currentTides, ...partial },
     };
     setLocalSettings(updated);
     onUpdateSettings(updated);
@@ -1278,7 +1279,7 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
   );
 };
 
-const TidalSettingsSection: React.FC<{ config: TidalStationConfig; onUpdate: (partial: Partial<TidalStationConfig>) => void }> = ({ config, onUpdate }) => {
+const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (partial: Partial<TidalStationConfig>) => void }> = ({ config, onUpdate }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<TidalStation[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -1289,17 +1290,20 @@ const TidalSettingsSection: React.FC<{ config: TidalStationConfig; onUpdate: (pa
     try {
       const resp = await fetch(`/api/tides/stations/search?q=${encodeURIComponent(searchQuery)}`);
       const data = await resp.json();
-      if (data.success) {
+      if (data && data.success && Array.isArray(data.stations)) {
         setSearchResults(data.stations);
+      } else {
+        setSearchResults([]);
       }
     } catch (err) {
       console.error('[Tides] Search failed:', err);
+      setSearchResults([]);
     } finally {
       setIsSearching(false);
     }
   };
 
-  const currentStations = config?.stations || [];
+  const currentStations = Array.isArray(config?.stations) ? config!.stations : [];
 
   const addStation = (station: TidalStation) => {
     if (currentStations.some(s => s.id === station.id)) return;

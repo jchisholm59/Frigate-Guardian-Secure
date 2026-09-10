@@ -484,6 +484,7 @@ async function startServer() {
 
     try {
       const searchTerm = (q as string).toLowerCase();
+      console.log(`[Tides] Searching for: "${searchTerm}"`);
 
       // We fetch a list of stations. DFO API is very literal with "name" or "code" parameters,
       // so we'll fetch the full list (it's not too big) and filter it on our server to be helpful.
@@ -491,13 +492,15 @@ async function startServer() {
       const resp = await fetch(url);
       const allStations: any[] = await resp.json();
 
-      // Perform case-insensitive search on name, code, or province
-      const filtered = allStations.filter(s =>
-        (s.officialName && s.name.toLowerCase().includes(searchTerm)) ||
-        (s.code && s.code.toLowerCase().includes(searchTerm)) ||
-        (s.provinceCode && s.provinceCode.toLowerCase().includes(searchTerm))
-      ).slice(0, 15); // Return top 15 matches to keep UI clean
+      // Perform robust case-insensitive search
+      const filtered = allStations.filter(s => {
+        const name = (s.officialName || s.name || '').toLowerCase();
+        const code = (s.code || '').toLowerCase();
+        const province = (s.provinceCode || '').toLowerCase();
+        return name.includes(searchTerm) || code.includes(searchTerm) || province.includes(searchTerm);
+      }).slice(0, 15); // Return top 15 matches to keep UI clean
 
+      console.log(`[Tides] Found ${filtered.length} matches for "${searchTerm}"`);
       res.json({ success: true, stations: filtered });
     } catch (err: any) {
       console.error('[Tides] Search error:', err.message);

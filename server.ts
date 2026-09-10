@@ -650,33 +650,39 @@ async function startServer() {
     res.setHeader('Cache-Control', 'no-cache, no-store');
     res.setHeader('Access-Control-Allow-Origin', '*'); // Allow browser to stream via proxy
 
-    // Use FFmpeg to grab RTSP audio and pipe it as MP3 to the browser
-    // Added -rtsp_transport tcp for better compatibility with ESP32/camera servers
+    let ffmpegStarted = false;
     const ffmpeg = spawn('ffmpeg', [
-      '-loglevel', 'info',
-      '-rtsp_transport', 'tcp', // Force TCP to avoid "Nonmatching transport" errors
+      '-loglevel', 'error',
+      '-rtsp_transport', 'tcp',
       '-i', rtspUrl,
-      '-vn',                   // No video
-      '-acodec', 'libmp3lame', // Encode to MP3
-      '-ab', '128k',           // Bitrate
-      '-ar', '44100',          // Sample rate for web compatibility
-      '-f', 'mp3',             // Format
-      'pipe:1'                 // Output to stdout
+      '-vn',
+      '-acodec', 'libmp3lame',
+      '-ab', '128k',
+      '-ar', '44100',
+      '-f', 'mp3',
+      'pipe:1'
     ]);
 
     ffmpeg.stdout.pipe(res);
 
     ffmpeg.stderr.on('data', (data) => {
       const msg = data.toString();
-      // Forward FFmpeg status to PM2 logs so we can see if it connects to the ESP32
-      if (msg.includes('Error') || msg.includes('Failed') || msg.includes('Stream')) {
-        console.log(`[BirdNET FFmpeg] ${msg.trim()}`);
-      }
+      console.log(`[BirdNET FFmpeg] ${msg.trim()}`);
+    });
+
+    ffmpeg.on('exit', (code) => {
+      console.log(`[BirdNET Proxy] FFmpeg process exited with code ${code}`);
+      if (!res.writableEnded) res.end();
     });
 
     ffmpeg.on('error', (err) => {
       console.error('[BirdNET Proxy] FFmpeg spawn error:', err);
-      if (!res.headersSent) res.status(500).send('FFmpeg process failed to start');
+      if (!res.headersSent) res.status(500).send('FFmpeg failed to start');
+    });
+
+    req.on('close', () => {
+      console.log('[BirdNET Proxy] Browser disconnected, stopping FFmpeg relay');
+      ffmpeg.kill('SIGKILL');
     });
 
     ffmpeg.on('exit', (code) => {

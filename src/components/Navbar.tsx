@@ -14,6 +14,8 @@ import {
   Zap,
   Palette,
   Bird,
+  Activity,
+  Waves,
 } from 'lucide-react';
 import { ActiveTab, SystemTelemetryData, MqttStatusInfo, NotificationSettings, AppTheme } from '../types';
 

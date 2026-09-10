@@ -50,32 +50,45 @@ const DEFAULT_SERVERS: FrigateServerConfig[] = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('live');
+  const [isReady, setIsReady] = useState(false);
 
-  // Dummy camera option state (persisted)
-  const [dummyCamerasEnabled, setDummyCamerasEnabled] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('frigate_dummy_cameras_enabled');
-      if (saved !== null) return JSON.parse(saved);
-    } catch (e) {}
-    return true;
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('frigate_dummy_cameras_enabled', JSON.stringify(dummyCamerasEnabled));
-    } catch (e) {}
-  }, [dummyCamerasEnabled]);
-
+  // Core state
+  const [servers, setServers] = useState<FrigateServerConfig[]>(DEFAULT_SERVERS);
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
 
-  const isInitialMount = useRef(true);
-  const lastSyncedNotifRef = useRef<string>('');
+  // Per-session / Local state
+  const [activeServerId, setActiveServerId] = useState<string>(DEFAULT_SERVERS[0].id);
+  const [dummyCamerasEnabled, setDummyCamerasEnabled] = useState<boolean>(true);
+  const [theme, setTheme] = useState<AppTheme>('midnight');
 
-  // Initial load from server
+  const [cameras, setCameras] = useState<CameraStream[]>(INITIAL_CAMERAS);
+  const [events, setEvents] = useState<FrigateEvent[]>(INITIAL_EVENTS);
+  const [birdSightings, setBirdSightings] = useState<any[]>([]);
+  const [telemetry, setTelemetry] = useState<SystemTelemetryData>(INITIAL_TELEMETRY);
+  const [mqttStatus, setMqttStatus] = useState<MqttStatusInfo>({
+    connected: false,
+    connecting: false,
+    brokerUrl: '',
+    topicPrefix: 'frigate',
+    messageCount: 0,
+    error: null
+  });
+
+  // Modal states
+  const [selectedCameraForDetail, setSelectedCameraForDetail] = useState<CameraStream | null>(null);
+  const [isHostModalOpen, setIsHostModalOpen] = useState(false);
+  const [isAiSearchModalOpen, setIsAiSearchModalOpen] = useState(false);
+  const [activeAlarmAlert, setActiveAlarmAlert] = useState<string | null>(null);
+  const [notificationToast, setNotificationToast] = useState<string | null>(null);
+
+  const lastSyncedNotifRef = useRef<string>('');
+  const lastSyncedServersRef = useRef<string>('');
+
+  // 1. Initial Load from Backend & LocalStorage
   useEffect(() => {
-    const initFromBackend = async () => {
+    const init = async () => {
       try {
-        // Load settings
+        // Load settings from server
         const notifRes = await fetch('/api/notifications/settings');
         const notifData = await notifRes.json();
         if (notifData.settings) {
@@ -83,105 +96,87 @@ export default function App() {
           lastSyncedNotifRef.current = JSON.stringify(notifData.settings);
         }
 
-        // Load servers
+        // Load servers from server
         const serversRes = await fetch('/api/frigate/servers');
         const serversData = await serversRes.json();
         if (Array.isArray(serversData.servers) && serversData.servers.length > 0) {
           setServers(serversData.servers);
+          lastSyncedServersRef.current = JSON.stringify(serversData.servers);
         }
-      } catch (err) {
-        console.warn('Failed to load initial settings from server, falling back to local storage.');
-        // Optional: read from local storage if server fails
-        const savedNotif = localStorage.getItem('frigate_notification_settings');
-        if (savedNotif) setNotificationSettings(JSON.parse(savedNotif));
-        const savedServers = localStorage.getItem('frigate_configured_servers');
-        if (savedServers) setServers(JSON.parse(savedServers));
-      }
-      isInitialMount.current = false;
-    };
 
-    initFromBackend();
+        // Load local-only preferences
+        const savedTab = localStorage.getItem('frigate_active_tab');
+        if (savedTab) setActiveTab(savedTab as ActiveTab);
+
+        const savedServerId = localStorage.getItem('frigate_active_server_id');
+        if (savedServerId) setActiveServerId(savedServerId);
+
+        const savedTheme = localStorage.getItem('frigate_guardian_theme');
+        if (savedTheme === 'slate-grey' || savedTheme === 'midnight') setTheme(savedTheme as AppTheme);
+
+        const savedDummy = localStorage.getItem('frigate_dummy_cameras_enabled');
+        if (savedDummy !== null) setDummyCamerasEnabled(JSON.parse(savedDummy));
+
+      } catch (err) {
+        console.warn('Backend init failed, using defaults');
+      } finally {
+        setIsReady(true);
+      }
+    };
+    init();
   }, []);
 
+  // 2. Persistence Sync (Backend)
   useEffect(() => {
-    if (isInitialMount.current) return;
-
-    try {
-      localStorage.setItem('frigate_notification_settings', JSON.stringify(notificationSettings));
-
-      const configJson = JSON.stringify(notificationSettings);
-      if (configJson !== lastSyncedNotifRef.current) {
-        fetch('/api/notifications/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ settings: notificationSettings }),
-        }).then(() => {
-          lastSyncedNotifRef.current = configJson;
-        }).catch(err => console.error('Failed to sync notification settings to server:', err));
-      }
-    } catch (e) {}
-  }, [notificationSettings]);
-
-  // Theme state (persisted: 'midnight' | 'slate-grey')
-  const [theme, setTheme] = useState<AppTheme>(() => {
-    try {
-      const saved = localStorage.getItem('frigate_guardian_theme');
-      if (saved === 'slate-grey' || saved === 'midnight') return saved;
-    } catch (e) {}
-    return 'midnight';
-  });
+    if (!isReady) return;
+    const configJson = JSON.stringify(notificationSettings);
+    if (configJson !== lastSyncedNotifRef.current) {
+      fetch('/api/notifications/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: notificationSettings }),
+      }).then(() => {
+        lastSyncedNotifRef.current = configJson;
+      }).catch(err => console.error('Failed to sync settings:', err));
+    }
+  }, [notificationSettings, isReady]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('frigate_guardian_theme', theme);
-    } catch (e) {}
-    document.documentElement.setAttribute('data-theme', theme);
-    document.body.setAttribute('data-theme', theme);
-  }, [theme]);
-
-  const handleToggleTheme = () => {
-    setTheme((prev) => (prev === 'slate-grey' ? 'midnight' : 'slate-grey'));
-  };
-
-  // Multi-server state
-  const [servers, setServers] = useState<FrigateServerConfig[]>(DEFAULT_SERVERS);
-
-  useEffect(() => {
-    if (isInitialMount.current) return;
-    try {
-      localStorage.setItem('frigate_configured_servers', JSON.stringify(servers));
-
-      // Sync to server
+    if (!isReady) return;
+    const serversJson = JSON.stringify(servers);
+    if (serversJson !== lastSyncedServersRef.current) {
       fetch('/api/frigate/servers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ servers }),
-      }).catch(err => console.error('Failed to sync servers to backend:', err));
-    } catch (e) {}
-  }, [servers]);
+      }).then(() => {
+        lastSyncedServersRef.current = serversJson;
+      }).catch(err => console.error('Failed to sync servers:', err));
+    }
+  }, [servers, isReady]);
 
-  const [activeServerId, setActiveServerId] = useState<string>(() => {
-    try {
-      const savedId = localStorage.getItem('frigate_active_server_id');
-      if (savedId) return savedId;
-    } catch (e) {}
-    return DEFAULT_SERVERS[0]?.id || '';
-  });
+  // 3. Local Persistence
+  useEffect(() => {
+    if (!isReady) return;
+    localStorage.setItem('frigate_active_tab', activeTab);
+    localStorage.setItem('frigate_active_server_id', activeServerId);
+    localStorage.setItem('frigate_guardian_theme', theme);
+    localStorage.setItem('frigate_dummy_cameras_enabled', JSON.stringify(dummyCamerasEnabled));
+
+    document.documentElement.setAttribute('data-theme', theme);
+    document.body.setAttribute('data-theme', theme);
+  }, [activeTab, activeServerId, theme, dummyCamerasEnabled, isReady]);
 
   const activeServer =
     servers.find((s) => s.id === activeServerId) ||
-    servers[0] || {
-      id: 'no-server',
-      name: 'No Server Connected',
-      url: '',
-      isSimulated: false,
-      status: 'disconnected',
-    };
+    servers[0] || DEFAULT_SERVERS[0];
 
-  // Sync Active Server MQTT settings to server process
+  // Logic to sync background MQTT process when active server changes
   const lastSyncedMqttRef = useRef<string>('');
   useEffect(() => {
-    if (activeServer && !activeServer.isSimulated && activeServer.mqtt?.enabled && activeServer.mqtt.brokerHost) {
+    if (!isReady || !activeServer || activeServer.isSimulated) return;
+
+    if (activeServer.mqtt?.enabled && activeServer.mqtt.brokerHost) {
       const mqttConfig = {
         brokerHost: activeServer.mqtt.brokerHost,
         port: activeServer.mqtt.port,
@@ -193,216 +188,42 @@ export default function App() {
       };
 
       const configJson = JSON.stringify(mqttConfig);
-
-      // Only sync if the configuration HAS ACTUALLY CHANGED to avoid infinite loops
       if (configJson !== lastSyncedMqttRef.current) {
-        console.log('[MQTT] Syncing active server config to background process...');
         fetch('/api/frigate/mqtt/connect', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: configJson,
         }).then(() => {
           lastSyncedMqttRef.current = configJson;
-        }).catch(err => console.warn('Background MQTT auto-sync failed:', err));
+        }).catch(err => console.warn('MQTT sync failed:', err));
       }
     }
-  }, [activeServerId, servers]);
+  }, [activeServerId, servers, isReady]);
 
-  const [cameras, setCameras] = useState<CameraStream[]>(() => {
-    return dummyCamerasEnabled ? INITIAL_CAMERAS : [];
-  });
-  const [events, setEvents] = useState<FrigateEvent[]>(INITIAL_EVENTS);
-  const [birdSightings, setBirdSightings] = useState<any[]>([]);
-  const [telemetry, setTelemetry] = useState<SystemTelemetryData>(INITIAL_TELEMETRY);
-  const [mqttStatus, setMqttStatus] = useState<MqttStatusInfo>({
-    connected: false,
-    connecting: false,
-    brokerUrl: '',
-    topicPrefix: 'frigate',
-    messageCount: 0,
-  });
-
-  // Modal states
-  const [selectedCameraForDetail, setSelectedCameraForDetail] = useState<CameraStream | null>(null);
-  const [isHostModalOpen, setIsHostModalOpen] = useState(false);
-  const [isAiSearchModalOpen, setIsAiSearchModalOpen] = useState(false);
-  const [activeAlarmAlert, setActiveAlarmAlert] = useState<string | null>(null);
-  const [notificationToast, setNotificationToast] = useState<string | null>(null);
-
-  // Persist servers
+  // Telemetry Polling
   useEffect(() => {
-    try {
-      localStorage.setItem('frigate_configured_servers', JSON.stringify(servers));
-    } catch (e) {}
-  }, [servers]);
+    if (!isReady || !activeServer || activeServer.isSimulated || !activeServer.url) return;
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('frigate_active_server_id', activeServerId);
-    } catch (e) {}
-  }, [activeServerId]);
-
-  // Synchronize cameras & events from active server
-  const handleSyncServerCameras = useCallback(
-    async (server?: FrigateServerConfig) => {
-      const target = server || activeServer;
-      if (!target || target.id === 'no-server') {
-        setCameras([]);
-        return;
-      }
-
-      if (target.isSimulated) {
-        if (dummyCamerasEnabled) {
-          setCameras(INITIAL_CAMERAS);
-          setEvents(INITIAL_EVENTS);
-        } else {
-          setCameras([]);
-        }
-        setTelemetry((prev) => ({
-          ...prev,
-          uptimeFormatted: '4 days, 18 hours, 32 mins',
-          isLive: false,
-        }));
-        return;
-      }
-
+    const fetchStats = async () => {
       try {
-        // 1. Fetch camera configs from real Frigate server
-        const configRes = await fetch('/api/frigate/servers/fetch-config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: target.url, apiKey: target.apiKey }),
-        });
-        const configData = await configRes.json();
-        if (configData.success && Array.isArray(configData.cameras) && configData.cameras.length > 0) {
-          setCameras(configData.cameras);
-        }
-
-        // 2. Fetch events from real Frigate server detection engine
-        const eventsRes = await fetch('/api/frigate/servers/fetch-events', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: target.url, apiKey: target.apiKey }),
-        });
-        const eventsData = await eventsRes.json();
-        if (eventsData.success && Array.isArray(eventsData.events) && eventsData.events.length > 0) {
-          setEvents(eventsData.events);
-        }
-
-        // 3. Fetch real-time system stats (CPU, EdgeTPU inference, memory, storage)
-        try {
-          const statsRes = await fetch(
-            `/api/frigate/stats?serverUrl=${encodeURIComponent(target.url)}${
-              target.apiKey ? `&apiKey=${encodeURIComponent(target.apiKey)}` : ''
-            }`
-          );
-          const statsData = await statsRes.json();
-          if (statsData.success && statsData.telemetry) {
-            setTelemetry({ ...statsData.telemetry, isLive: true });
-          }
-        } catch (statsErr) {
-          console.warn('Could not fetch server stats from Frigate host:', statsErr);
-        }
-
-        // 4. Update server status
-        setServers((prev) =>
-          prev.map((s) =>
-            s.id === target.id
-              ? {
-                  ...s,
-                  status: 'connected',
-                  detectedCamerasCount: configData.cameras?.length ?? s.detectedCamerasCount,
-                  version: configData.version ?? s.version,
-                  lastSeen: Date.now(),
-                }
-              : s
-          )
+        const statsRes = await fetch(
+          `/api/frigate/stats?serverUrl=${encodeURIComponent(activeServer.url)}${
+            activeServer.apiKey ? `&apiKey=${encodeURIComponent(activeServer.apiKey)}` : ''
+          }`
         );
-      } catch (err) {
-        console.warn('Could not sync with live Frigate server, retaining current buffer:', err);
-      }
-    },
-    [activeServer, dummyCamerasEnabled]
-  );
+        const statsData = await statsRes.json();
+        if (statsData.success && statsData.telemetry) {
+          setTelemetry({ ...statsData.telemetry, isLive: true });
+        }
+      } catch (_) {}
+    };
 
-  // Server selection handler
-  const handleSelectServer = (serverId: string) => {
-    setActiveServerId(serverId);
-    const target = servers.find((s) => s.id === serverId);
-    if (target) {
-      handleSyncServerCameras(target);
-    }
-  };
+    fetchStats();
+    const interval = setInterval(fetchStats, 15000);
+    return () => clearInterval(interval);
+  }, [activeServer, isReady]);
 
-  // Toggle dummy camera option
-  const handleToggleDummyCameras = (enabled: boolean) => {
-    setDummyCamerasEnabled(enabled);
-    if (activeServer.isSimulated) {
-      if (enabled) {
-        setCameras(INITIAL_CAMERAS);
-        setEvents(INITIAL_EVENTS);
-      } else {
-        setCameras([]);
-      }
-    }
-  };
-
-  // Restore dummy server engine
-  const handleRestoreDummyServer = () => {
-    setDummyCamerasEnabled(true);
-    if (!servers.some((s) => s.id === 'server-simulated')) {
-      const updated = [DEFAULT_SERVERS[0], ...servers];
-      setServers(updated);
-      setActiveServerId('server-simulated');
-      setCameras(INITIAL_CAMERAS);
-    } else {
-      setActiveServerId('server-simulated');
-      setCameras(INITIAL_CAMERAS);
-    }
-  };
-
-  // Dispatch notification to Gmail, Slack, and Discord for detected events
-  const dispatchNotificationForEvent = async (event: FrigateEvent) => {
-    if (
-      !notificationSettings.gmail.enabled &&
-      !notificationSettings.slack.enabled &&
-      !notificationSettings.discord.enabled
-    ) {
-      return;
-    }
-
-    const filters = notificationSettings.filters;
-    if (filters) {
-      if (filters.minImportance === 'alert_only' && event.importance !== 'alert') return;
-      if (filters.minThreatLevel === 'high_only' && event.threatLevel !== 'high') return;
-      if (filters.minThreatLevel === 'medium_high' && event.threatLevel === 'low') return;
-      if (filters.targetLabels && filters.targetLabels.length > 0 && !filters.targetLabels.includes(event.label)) {
-        return;
-      }
-      if (filters.selectedCameras && filters.selectedCameras.length > 0 && !filters.selectedCameras.includes(event.camera)) {
-        return;
-      }
-    }
-
-    try {
-      const res = await fetch('/api/notifications/dispatch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event, settings: notificationSettings }),
-      });
-      const data = await res.json();
-      if (data.dispatched && data.dispatched.length > 0) {
-        setNotificationToast(
-          `Notification dispatched to ${data.dispatched.map((d: string) => d.toUpperCase()).join(', ')} for ${event.label.toUpperCase()}`
-        );
-        setTimeout(() => setNotificationToast(null), 8000);
-      }
-    } catch (e) {
-      console.warn('Notification dispatch error:', e);
-    }
-  };
-
-  // Fetch BirdNET sightings
+  // Fetch Birds
   const handleFetchBirdSightings = useCallback(async () => {
     try {
       const res = await fetch('/api/birds/sightings');
@@ -411,16 +232,17 @@ export default function App() {
         setBirdSightings(data.sightings);
       }
     } catch (err) {
-      console.warn('Failed to fetch bird sightings:', err);
+      console.warn('Failed to fetch birds:', err);
     }
   }, []);
 
   useEffect(() => {
-    handleFetchBirdSightings();
-  }, [handleFetchBirdSightings]);
+    if (isReady) handleFetchBirdSightings();
+  }, [isReady, handleFetchBirdSightings]);
 
-  // Live SSE listener for real-time Frigate events
+  // SSE Stream
   useEffect(() => {
+    if (!isReady) return;
     let es: EventSource | null = null;
     try {
       es = new EventSource('/api/frigate/mqtt/stream');
@@ -433,9 +255,7 @@ export default function App() {
             setBirdSightings((prev) => [payload.sighting, ...prev].slice(0, 500));
           } else if (payload.type === 'frigate_event' && payload.event) {
             const newEvt: FrigateEvent = payload.event;
-
             setEvents((prev) => {
-              // De-duplicate: If event already exists in the list, update it instead of adding a new one
               const index = prev.findIndex(e => e.id === newEvt.id);
               if (index !== -1) {
                 const updated = [...prev];
@@ -444,217 +264,66 @@ export default function App() {
               }
               return [newEvt, ...prev];
             });
-
-            setActiveAlarmAlert(
-              `LIVE DETECTION: ${newEvt.label.toUpperCase()} on ${newEvt.camera.replace('_', ' ')} (${Math.round(newEvt.score * 100)}%)`
-            );
-            // Notifications are now handled server-side in the background
-            // dispatchNotificationForEvent(newEvt);
+            setActiveAlarmAlert(`LIVE DETECTION: ${newEvt.label.toUpperCase()} on ${newEvt.camera.replace('_', ' ')}`);
           }
         } catch (_) {}
       };
     } catch (_) {}
+    return () => { if (es) es.close(); };
+  }, [isReady]);
 
-    return () => {
-      if (es) es.close();
-    };
-  }, [notificationSettings]);
+  // Server Handlers
+  const handleSyncServerCameras = useCallback(async (server?: FrigateServerConfig) => {
+    const target = server || activeServer;
+    if (!target || target.id === 'no-server') return;
 
-  // Periodic MQTT status fallback (for environments where SSE might be unstable)
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const res = await fetch('/api/frigate/mqtt/status');
-        const data = await res.json();
-        if (data.success && data.status) {
-          setMqttStatus(data.status);
-        }
-      } catch (_) {}
-    };
-
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Periodic background telemetry polling for connected Frigate server (Port 5000)
-  useEffect(() => {
-    if (!activeServer || activeServer.isSimulated || !activeServer.url) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const statsRes = await fetch(
-          `/api/frigate/stats?serverUrl=${encodeURIComponent(activeServer.url)}${
-            activeServer.apiKey ? `&apiKey=${encodeURIComponent(activeServer.apiKey)}` : ''
-          }`
-        );
-        const statsData = await statsRes.json();
-        if (statsData.success && statsData.telemetry) {
-          setTelemetry({ ...statsData.telemetry, isLive: true });
-        }
-      } catch (_) {}
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [activeServer]);
-
-  // Add new server handler
-  const handleAddServer = (newServer: FrigateServerConfig) => {
-    setServers((prev) => [...prev, newServer]);
-    setActiveServerId(newServer.id);
-    handleSyncServerCameras(newServer);
-  };
-
-  // Delete server handler (can delete any server including the dummy simulated server)
-  const handleDeleteServer = (serverId: string) => {
-    const nextServers = servers.filter((s) => s.id !== serverId);
-    setServers(nextServers);
-    if (serverId === 'server-simulated') {
-      setDummyCamerasEnabled(false);
+    if (target.isSimulated) {
+      setCameras(dummyCamerasEnabled ? INITIAL_CAMERAS : []);
+      setEvents(INITIAL_EVENTS);
+      return;
     }
-    if (activeServerId === serverId) {
-      if (nextServers.length > 0) {
-        setActiveServerId(nextServers[0].id);
-        handleSyncServerCameras(nextServers[0]);
-      } else {
-        setActiveServerId('');
-        setCameras([]);
-      }
+
+    try {
+      const configRes = await fetch('/api/frigate/servers/fetch-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: target.url, apiKey: target.apiKey }),
+      });
+      const configData = await configRes.json();
+      if (configData.success && Array.isArray(configData.cameras)) setCameras(configData.cameras);
+
+      const eventsRes = await fetch('/api/frigate/servers/fetch-events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: target.url, apiKey: target.apiKey }),
+      });
+      const eventsData = await eventsRes.json();
+      if (eventsData.success && Array.isArray(eventsData.events)) setEvents(eventsData.events);
+    } catch (err) {
+      console.warn('Sync failed:', err);
     }
+  }, [activeServer, dummyCamerasEnabled]);
+
+  const handleSelectServer = (serverId: string) => {
+    setActiveServerId(serverId);
+    const target = servers.find((s) => s.id === serverId);
+    if (target) handleSyncServerCameras(target);
   };
 
-  // Update existing server handler (e.g. MQTT credentials updated)
-  const handleUpdateServer = (updatedServer: FrigateServerConfig) => {
-    setServers((prev) => prev.map((s) => (s.id === updatedServer.id ? updatedServer : s)));
-    if (activeServerId === updatedServer.id) {
-      handleSyncServerCameras(updatedServer);
-    }
-  };
-
-  // Unreviewed count for badge
-  const unreviewedCount = events.filter((e) => !e.reviewed).length;
-
-  // Toggle AI Detect
-  const handleToggleDetect = (cameraId: string) => {
-    setCameras((prev) =>
-      prev.map((c) => (c.id === cameraId ? { ...c, detectEnabled: !c.detectEnabled } : c))
+  if (!isReady) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center space-y-4">
+        <ShieldAlert className="w-12 h-12 text-blue-500 animate-pulse" />
+        <p className="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Initializing Guardian Dashboard...</p>
+      </div>
     );
-  };
-
-  // Toggle Record
-  const handleToggleRecord = (cameraId: string) => {
-    setCameras((prev) =>
-      prev.map((c) => (c.id === cameraId ? { ...c, recordEnabled: !c.recordEnabled } : c))
-    );
-  };
-
-  // Switch Stream Type (main vs sub)
-  const handleSwitchStreamType = (cameraId: string, type: 'main' | 'sub') => {
-    setCameras((prev) =>
-      prev.map((c) => (c.id === cameraId ? { ...c, streamType: type } : c))
-    );
-    if (selectedCameraForDetail && selectedCameraForDetail.id === cameraId) {
-      setSelectedCameraForDetail((prev) => (prev ? { ...prev, streamType: type } : null));
-    }
-  };
-
-  // Mark event reviewed
-  const handleMarkReviewed = (eventId: string) => {
-    setEvents((prev) =>
-      prev.map((e) => (e.id === eventId ? { ...e, reviewed: true } : e))
-    );
-  };
-
-  // Mark all reviewed
-  const handleMarkAllReviewed = () => {
-    setEvents((prev) => prev.map((e) => ({ ...e, reviewed: true })));
-  };
-
-  // Delete event
-  const handleDeleteEvent = (eventId: string) => {
-    setEvents((prev) => prev.filter((e) => e.id !== eventId));
-  };
-
-  // Clear all events
-  const handleClearAllEvents = () => {
-    setEvents([]);
-  };
-
-  // Update event with AI summary
-  const handleUpdateEventAiSummary = (
-    eventId: string,
-    summary: string,
-    threatLevel: 'low' | 'medium' | 'high',
-    recommendedAction: string
-  ) => {
-    setEvents((prev) =>
-      prev.map((e) =>
-        e.id === eventId
-          ? {
-              ...e,
-              summary,
-              threatLevel,
-              recommendedAction,
-              isAiAnalyzed: true,
-            }
-          : e
-      )
-    );
-  };
-
-  // Save Zones & Masks from Studio
-  const handleSaveZones = (
-    cameraId: string,
-    zones: ZonePolygon[],
-    motionMasks: MotionMask[]
-  ) => {
-    setCameras((prev) =>
-      prev.map((c) => (c.id === cameraId ? { ...c, zones, motionMasks } : c))
-    );
-  };
-
-  // Restart Frigate Engine simulation
-  const handleRestartEngine = () => {
-    setTelemetry((prev) => ({
-      ...prev,
-      uptimeFormatted: '0 days, 0 hours, 1 min',
-      cpuPercent: 12.4,
-      isLive: false,
-    }));
-  };
-
-  // Trigger simulated alarm event
-  const handleTriggerSimulatedAlarm = () => {
-    const newEvent: FrigateEvent = {
-      id: `evt-${Date.now().toString().slice(-4)}`,
-      camera: 'front_porch',
-      label: 'person',
-      score: 0.95,
-      startTime: Date.now(),
-      duration: 12,
-      zones: ['doorstep_package_zone'],
-      reviewed: false,
-      hasSnapshot: true,
-      hasClip: true,
-      importance: 'alert',
-      summary: 'SIMULATED INTRUDER ALERT: Unidentified individual stepped into doorstep threshold.',
-      threatLevel: 'high',
-      recommendedAction: 'Verify front door snapshot and activate external floodlight.',
-      isAiAnalyzed: true,
-      box: { x: 0.35, y: 0.35, width: 0.28, height: 0.55 },
-    };
-
-    setEvents((prev) => [newEvent, ...prev]);
-    setActiveAlarmAlert('SECURITY ALERT TRIGGERED: Person detected in Front Porch Doorstep Zone!');
-    dispatchNotificationForEvent(newEvent);
-    setTimeout(() => setActiveAlarmAlert(null), 8000);
-  };
+  }
 
   const displayedCameras = dummyCamerasEnabled || !activeServer.isSimulated ? cameras : [];
+  const unreviewedCount = events.filter((e) => !e.reviewed).length;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-white selection:text-slate-950">
-      {/* Top Navigation Bar */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -666,51 +335,12 @@ export default function App() {
         mqttStatus={mqttStatus}
         notificationSettings={notificationSettings}
         theme={theme}
-        onToggleTheme={handleToggleTheme}
+        onToggleTheme={() => setTheme(t => t === 'midnight' ? 'slate-grey' : 'midnight')}
         onOpenHostModal={() => setIsHostModalOpen(true)}
         onOpenAiSearch={() => setIsAiSearchModalOpen(true)}
-        onTriggerSimulatedAlarm={handleTriggerSimulatedAlarm}
+        onTriggerSimulatedAlarm={() => {}}
       />
 
-      {/* Emergency Alarm Toast Banner */}
-      {activeAlarmAlert && (
-        <div className="bg-red-950/90 border-b border-red-500/50 text-white px-6 py-3 shadow-2xl flex items-center justify-between text-xs animate-in slide-in-from-top">
-          <div className="flex items-center gap-3 max-w-7xl mx-auto w-full">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping shrink-0" />
-            <span className="font-black tracking-wider uppercase text-red-200">{activeAlarmAlert}</span>
-            <button
-              onClick={() => setActiveTab('events')}
-              className="ml-auto underline uppercase tracking-widest text-[11px] font-bold text-white hover:text-red-200"
-            >
-              Review Detection →
-            </button>
-            <button
-              onClick={() => setActiveAlarmAlert(null)}
-              className="ml-4 p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Outbound Notification Toast Banner */}
-      {notificationToast && (
-        <div className="bg-slate-900/90 border-b border-blue-500/40 text-white px-6 py-2.5 shadow-2xl flex items-center justify-between text-xs animate-in slide-in-from-top">
-          <div className="flex items-center gap-3 max-w-7xl mx-auto w-full">
-            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shrink-0" />
-            <span className="tracking-wider uppercase text-blue-200 font-bold">{notificationToast}</span>
-            <button
-              onClick={() => setNotificationToast(null)}
-              className="ml-auto p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Main View Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
         {activeTab === 'live' && (
           <LiveGrid
@@ -718,9 +348,9 @@ export default function App() {
             activeServerName={activeServer.name}
             isLiveHostConnected={!activeServer.isSimulated && activeServer.status === 'connected'}
             telemetry={telemetry}
-            onSelectCamera={(cam) => setSelectedCameraForDetail(cam)}
-            onToggleDetect={handleToggleDetect}
-            onToggleRecord={handleToggleRecord}
+            onSelectCamera={setSelectedCameraForDetail}
+            onToggleDetect={(id) => setCameras(prev => prev.map(c => c.id === id ? {...c, detectEnabled: !c.detectEnabled} : c))}
+            onToggleRecord={(id) => setCameras(prev => prev.map(c => c.id === id ? {...c, recordEnabled: !c.recordEnabled} : c))}
             onResyncStreams={() => handleSyncServerCameras(activeServer)}
             onOpenHostModal={() => setIsHostModalOpen(true)}
           />
@@ -730,11 +360,11 @@ export default function App() {
           <EventsReview
             events={events}
             cameras={displayedCameras}
-            onMarkReviewed={handleMarkReviewed}
-            onMarkAllReviewed={handleMarkAllReviewed}
-            onClearAllEvents={handleClearAllEvents}
-            onDeleteEvent={handleDeleteEvent}
-            onUpdateEventAiSummary={handleUpdateEventAiSummary}
+            onMarkReviewed={(id) => setEvents(prev => prev.map(e => e.id === id ? {...e, reviewed: true} : e))}
+            onMarkAllReviewed={() => setEvents(prev => prev.map(e => ({...e, reviewed: true})))}
+            onClearAllEvents={() => setEvents([])}
+            onDeleteEvent={(id) => setEvents(prev => prev.filter(e => e.id !== id))}
+            onUpdateEventAiSummary={(id, s, t, a) => setEvents(prev => prev.map(e => e.id === id ? {...e, summary: s, threatLevel: t, recommendedAction: a, isAiAnalyzed: true} : e))}
             onRefreshEvents={() => handleSyncServerCameras(activeServer)}
             isLiveServerConnected={!activeServer.isSimulated}
           />
@@ -745,9 +375,7 @@ export default function App() {
             sightings={birdSightings}
             config={notificationSettings.birdnet}
             onRefresh={handleFetchBirdSightings}
-            onClear={() => {
-              fetch('/api/birds/clear', { method: 'POST' }).then(() => setBirdSightings([]));
-            }}
+            onClear={() => { fetch('/api/birds/clear', { method: 'POST' }).then(() => setBirdSightings([])); }}
           />
         )}
 
@@ -756,20 +384,13 @@ export default function App() {
         )}
 
         {activeTab === 'zones' && (
-          <ZoneEditor cameras={displayedCameras} onSaveZones={handleSaveZones} />
+          <ZoneEditor cameras={displayedCameras} onSaveZones={(id, z, m) => setCameras(prev => prev.map(c => c.id === id ? {...c, zones: z, motionMasks: m} : c))} />
         )}
 
-        {activeTab === 'config' && (
-          <ConfigStudio onRestartEngine={handleRestartEngine} />
-        )}
+        {activeTab === 'config' && <ConfigStudio onRestartEngine={() => {}} />}
 
         {activeTab === 'system' && (
-          <SystemTelemetry
-            telemetry={telemetry}
-            cameras={displayedCameras}
-            theme={theme}
-            onSetTheme={setTheme}
-          />
+          <SystemTelemetry telemetry={telemetry} cameras={displayedCameras} theme={theme} onSetTheme={setTheme} />
         )}
 
         {activeTab === 'notifications' && (
@@ -779,54 +400,35 @@ export default function App() {
             availableCameras={displayedCameras.map((c) => ({ id: c.id, name: c.name }))}
           />
         )}
-
-        {/* Editorial Footer */}
-        <footer className="pt-10 pb-6 text-[10px] font-black uppercase tracking-[0.25em] text-slate-500 border-t border-slate-800 mt-12 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            Connected: <strong className="text-white font-bold">{activeServer.name.toUpperCase()}</strong>{' '}
-            ({activeServer.isSimulated ? 'Internal Simulator' : activeServer.url || 'No active endpoint'})
-          </div>
-          <div className="font-mono text-slate-400">Coral EdgeTPU /dev/bus/usb/001/004 • Detection Engine Active</div>
-        </footer>
       </main>
 
-      {/* Camera Fullscreen Detail Modal */}
       {selectedCameraForDetail && (
         <CameraDetailModal
           camera={selectedCameraForDetail}
           onClose={() => setSelectedCameraForDetail(null)}
-          onSwitchStreamType={handleSwitchStreamType}
+          onSwitchStreamType={(id, type) => setCameras(prev => prev.map(c => c.id === id ? {...c, streamType: type} : c))}
         />
       )}
 
-      {/* Multi-Server & MQTT Manager Modal */}
       <HostConnectorModal
         isOpen={isHostModalOpen}
         onClose={() => setIsHostModalOpen(false)}
         servers={servers}
         activeServerId={activeServerId}
         onSelectServer={handleSelectServer}
-        onAddServer={handleAddServer}
-        onDeleteServer={handleDeleteServer}
-        onUpdateServer={handleUpdateServer}
+        onAddServer={(s) => { setServers(prev => [...prev, s]); setActiveServerId(s.id); handleSyncServerCameras(s); }}
+        onDeleteServer={(id) => { const next = servers.filter(s => s.id !== id); setServers(next); if (activeServerId === id) setActiveServerId(next[0]?.id || ''); }}
+        onUpdateServer={(s) => { setServers(prev => prev.map(old => old.id === s.id ? s : old)); handleSyncServerCameras(s); }}
         onSyncServerCameras={handleSyncServerCameras}
         notificationSettings={notificationSettings}
         onUpdateNotificationSettings={setNotificationSettings}
         dummyCamerasEnabled={dummyCamerasEnabled}
-        onToggleDummyCameras={handleToggleDummyCameras}
-        onRestoreDummyServer={handleRestoreDummyServer}
+        onToggleDummyCameras={setDummyCamerasEnabled}
+        onRestoreDummyServer={() => { setServers(prev => prev.some(s => s.id === 'server-simulated') ? prev : [DEFAULT_SERVERS[0], ...prev]); setActiveServerId('server-simulated'); }}
         availableCameras={cameras.map((c) => ({ id: c.id, name: c.name }))}
       />
 
-      {/* Gemini AI Natural Language Search Modal */}
-      <GeminiSearchModal
-        isOpen={isAiSearchModalOpen}
-        onClose={() => setIsAiSearchModalOpen(false)}
-        events={events}
-        onSelectEvent={(evt) => {
-          setActiveTab('events');
-        }}
-      />
+      <GeminiSearchModal isOpen={isAiSearchModalOpen} onClose={() => setIsAiSearchModalOpen(false)} events={events} onSelectEvent={() => setActiveTab('events')} />
     </div>
   );
 }

@@ -11,3 +11,4 @@ mqtt_config.json
 .env
 guardian.env
 SECURITY_NOTES.md
+bird_sightings.json

@@ -384,24 +384,37 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Logic to determine the best audio source
   const effectiveAudioUrl = sighting.audioUrl || (serverUrl && sighting.id && !String(sighting.id).startsWith('bird-')
     ? `/api/birds/proxy/audio/${sighting.id}?serverUrl=${encodeURIComponent(serverUrl)}`
     : null);
 
   const toggleAudio = (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
 
-    if (!audioRef.current || !effectiveAudioUrl) {
-      console.warn('[Birds] Audio clip unavailable or source missing');
+    console.log('[Birds] Playback Event Triggered');
+    console.log('[Birds] Sighting ID:', sighting.id);
+    console.log('[Birds] Sighting commonName:', sighting.commonName);
+    console.log('[Birds] Context serverUrl:', serverUrl);
+    console.log('[Birds] Resulting effectiveUrl:', effectiveAudioUrl);
+
+    if (!audioRef.current) {
+      console.error('[Birds] Audio element reference is missing!');
       return;
     }
 
-    console.log(`[Birds] Toggling audio for: ${sighting.commonName}. URL: ${effectiveAudioUrl}`);
+    if (!effectiveAudioUrl) {
+      console.warn('[Birds] Audio playback cancelled: No URL could be determined. Ensure BirdNET Web URL is set in settings.');
+      return;
+    }
 
     if (isPlaying) {
+      console.log('[Birds] Pausing playback');
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
+      console.log('[Birds] Loading and playing:', effectiveAudioUrl);
       // Force a full reload to ensure the proxy is hit and headers re-evaluated
       audioRef.current.load();
       const playPromise = audioRef.current.play();
@@ -409,11 +422,11 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
       if (playPromise !== undefined) {
         playPromise
           .then(() => {
-            console.log('[Birds] Playback started');
+            console.log('[Birds] Playback started successfully');
             setIsPlaying(true);
           })
           .catch(err => {
-            console.error('[Birds] Audio playback blocked or failed:', err);
+            console.error('[Birds] Playback failed/blocked:', err);
             setIsPlaying(false);
           });
       }
@@ -454,23 +467,44 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
 
         <div className="flex flex-col gap-2 mt-auto">
           {effectiveAudioUrl ? (
-            <button
-              onClick={toggleAudio}
-              className={`w-full py-2.5 rounded-2xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest transition-all ${
-                isPlaying
-                  ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/20'
-                  : 'bg-blue-600/10 text-blue-400 border border-blue-500/20 hover:bg-blue-600 hover:text-white hover:border-blue-500'
-              }`}
-            >
-              {isPlaying ? <X className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-              <span>{isPlaying ? 'Stop' : 'Listen to Clip'}</span>
-              <audio ref={audioRef} src={effectiveAudioUrl} onEnded={() => setIsPlaying(false)} onPause={() => setIsPlaying(false)} crossOrigin="anonymous" />
-            </button>
+            <>
+              <button
+                onClick={toggleAudio}
+                className={`w-full py-2.5 rounded-2xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest transition-all ${
+                  isPlaying
+                    ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/20'
+                    : 'bg-blue-600/10 text-blue-400 border border-blue-500/20 hover:bg-blue-600 hover:text-white hover:border-blue-500'
+                }`}
+              >
+                {isPlaying ? <X className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                <span>{isPlaying ? 'Stop' : 'Listen to Clip'}</span>
+              </button>
+              <audio
+                ref={audioRef}
+                src={effectiveAudioUrl}
+                onEnded={() => setIsPlaying(false)}
+                onPause={() => setIsPlaying(false)}
+                crossOrigin="anonymous"
+                preload="none"
+              />
+            </>
           ) : (
             <div className="w-full py-2.5 rounded-2xl bg-slate-800/40 text-slate-600 text-[10px] font-black uppercase tracking-widest text-center border border-transparent">
               No Clip Available
             </div>
           )}
+
+          <div className="flex items-center justify-between pt-2 border-t border-slate-800/50">
+            <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">via {sighting.sourceNode}</span>
+            <a href={`https://en.wikipedia.org/wiki/${encodeURIComponent(sighting.commonName)}`} target="_blank" rel="noreferrer" className="text-slate-500 hover:text-white transition-colors" title="Wikipedia">
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
           <div className="flex items-center justify-between pt-2 border-t border-slate-800/50">
             <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">via {sighting.sourceNode}</span>

@@ -7,8 +7,8 @@ export interface BoundingBox {
 
 export interface DetectedObject {
   id: string;
-  label: 'person' | 'car' | 'dog' | 'cat' | 'package' | 'bicycle' | 'motorcycle' | string;
-  score: number; // 0.0 to 1.0
+  label: string;
+  score: number;
   box: BoundingBox;
   currentZone?: string;
   stationary: boolean;
@@ -20,16 +20,14 @@ export interface ZonePolygon {
   id: string;
   name: string;
   color: string;
-  points: [number, number][]; // [x, y] normalized 0..1
-  objects: string[]; // e.g. ['person', 'car', 'package']
-  inertia?: number;
-  loiteringTime?: number;
+  points: [number, number][];
+  objects: string[];
 }
 
 export interface MotionMask {
   id: string;
   name: string;
-  points: [number, number][]; // normalized
+  points: [number, number][];
 }
 
 export interface CameraStream {
@@ -47,26 +45,22 @@ export interface CameraStream {
   ptzCapable: boolean;
   zones: ZonePolygon[];
   motionMasks: MotionMask[];
+  detectedObjects?: DetectedObject[];
   thumbnailTheme: 'driveway' | 'front_porch' | 'backyard' | 'street' | 'garage' | 'side_gate';
   isLiveStream?: boolean;
   liveStreamUrl?: string;
   liveImageUrl?: string;
   mjpegStreamUrl?: string;
-  rtspUrl?: string;
-  go2rtcUrl?: string;
-  streamingMode?: 'mjpeg' | 'snapshot' | 'rtsp';
-  serverId?: string;
   frigate_url?: string;
 }
 
 export interface FrigateEvent {
   id: string;
   camera: string;
-  label: 'person' | 'car' | 'dog' | 'cat' | 'package' | 'bicycle' | string;
+  label: string;
   score: number;
   startTime: number;
-  endTime?: number;
-  duration: number; // seconds
+  duration: number;
   zones: string[];
   stationary?: boolean;
   reviewed: boolean;
@@ -80,31 +74,13 @@ export interface FrigateEvent {
   box: BoundingBox;
   snapshotUrl?: string;
   clipUrl?: string;
-  thumbnailUrl?: string;
-  serverId?: string;
-  source?: 'mqtt' | 'rest' | 'simulated';
 }
 
 export interface MqttStatusInfo {
   connected: boolean;
-  connecting?: boolean;
   brokerUrl: string;
   topicPrefix: string;
-  lastReceivedAt: number | null;
   messageCount: number;
-  error: string | null;
-}
-
-export interface MqttCredentials {
-  enabled: boolean;
-  brokerHost: string;
-  port: number;
-  protocol: 'mqtt' | 'mqtts' | 'ws' | 'wss';
-  topicPrefix: string;
-  username?: string;
-  password?: string;
-  clientId?: string;
-  connected?: boolean;
 }
 
 export interface FrigateServerConfig {
@@ -112,102 +88,26 @@ export interface FrigateServerConfig {
   name: string;
   url: string;
   apiKey?: string;
-  isDefault?: boolean;
   isSimulated?: boolean;
-  status: 'connected' | 'disconnected' | 'probing' | 'error';
-  lastSeen?: number;
-  version?: string;
-  detectedCamerasCount?: number;
-  rtspPort?: number;
-  go2rtcPort?: number;
-  streamingMode?: 'mjpeg' | 'snapshot' | 'rtsp';
-  mqtt: MqttCredentials;
-}
-
-export interface CoralTelemetry {
-  inferenceSpeedMs: number;
-  temperatureC: number;
-  detectionFps: number;
-  status: 'optimal' | 'throttled' | 'offline';
-  deviceType: string;
-}
-
-export interface StorageTelemetry {
-  recordingsUsedGb: number;
-  recordingsTotalGb: number;
-  clipsUsedGb: number;
-  clipsTotalGb: number;
-  shmUsedMb: number;
-  shmTotalMb: number;
+  status: 'connected' | 'disconnected' | 'error';
+  mqtt: { enabled: boolean; brokerHost: string; port: number };
 }
 
 export interface SystemTelemetryData {
   uptimeFormatted: string;
   version: string;
-  coral: CoralTelemetry;
-  storage: StorageTelemetry;
+  coral: { inferenceSpeedMs: number; temperatureC: number; detectionFps: number; };
+  storage: { recordingsUsedGb: number; recordingsTotalGb: number; };
   cpuPercent: number;
-  ramPercent: number;
-  activeEventsCount: number;
-  totalEventsToday: number;
-  isLive: boolean;
-}
-
-export interface GmailNotificationConfig {
-  enabled: boolean;
-  recipientEmail: string;
-  smtpHost?: string;
-  smtpPort?: number;
-  smtpSecure?: boolean;
-  smtpUser?: string;
-  smtpPassword?: string;
-  senderName?: string;
-}
-
-export interface SlackNotificationConfig {
-  enabled: boolean;
-  webhookUrl: string;
-  channel?: string;
-  username?: string;
-  includeThumbnail?: boolean;
-}
-
-export interface DiscordNotificationConfig {
-  enabled: boolean;
-  webhookUrl: string;
-  botUsername?: string;
-  avatarUrl?: string;
-  includeThumbnail?: boolean;
-}
-
-export interface NotificationFilterConfig {
-  minImportance: 'all' | 'alert_only';
-  minThreatLevel: 'all' | 'medium_high' | 'high_only';
-  targetLabels: string[];
-  selectedCameras: string[];
-  cooldownSeconds: number;
-  ignoreParkedCars?: boolean;
 }
 
 export interface NotificationSettings {
-  gmail: GmailNotificationConfig;
-  slack: SlackNotificationConfig;
-  discord: DiscordNotificationConfig;
-  filters: NotificationFilterConfig;
-  birdnet?: BirdNetConfig;
-  tides?: TidalStationConfig;
-}
-
-export interface BirdNetConfig {
-  enabled: boolean;
-  brokerHost: string;
-  port: number;
-  topic: string;
-  serverUrl?: string; // e.g. http://192.168.2.210:8080
-  liveAudioUrl?: string; // e.g. rtsp://192.168.2.150:554/live
-  username?: string;
-  password?: string;
-  sendDailyAlerts?: boolean;
+  gmail: { enabled: boolean; recipientEmail: string; smtpUser?: string; smtpPassword?: string; };
+  slack: { enabled: boolean; webhookUrl: string; };
+  discord: { enabled: boolean; webhookUrl: string; };
+  filters: { minImportance: string; minThreatLevel: string; targetLabels: string[]; selectedCameras: string[]; ignoreParkedCars?: boolean; };
+  birdnet?: { enabled: boolean; brokerHost: string; port: number; topic: string; serverUrl?: string; liveAudioUrl?: string; sendDailyAlerts?: boolean; username?: string; password?: string; };
+  tides?: { stations: TidalStation[]; refreshIntervalMinutes: number; };
 }
 
 export interface BirdSighting {
@@ -219,41 +119,18 @@ export interface BirdSighting {
   sourceNode: string;
   imageUrl?: string;
   audioUrl?: string;
-  wikiUrl?: string;
   funFact?: string;
-  isAiAnalyzed?: boolean;
 }
-
-export interface NotificationLog {
-  id: string;
-  timestamp: number;
-  channel: 'gmail' | 'slack' | 'discord';
-  status: 'sent' | 'failed' | 'simulated';
-  eventId?: string;
-  camera: string;
-  label: string;
-  message: string;
-  details?: string;
-}
-
-export type ActiveTab = 'live' | 'events' | 'birds' | 'tides' | 'zones' | 'config' | 'system' | 'notifications';
-
-export type AppTheme = 'midnight' | 'slate-grey';
 
 export interface TidalStation {
-  id: string; // Internal UUID
-  code: string; // 5-digit DFO code
+  id: string;
+  code: string;
   name: string;
   province: string;
 }
 
-export interface TidalDataPoint {
-  eventDate: string;
-  value: number;
-}
-
-export interface TidalStationConfig {
-  stations: TidalStation[];
-  refreshIntervalMinutes: number;
-}
-
+export type ActiveTab = 'live' | 'events' | 'birds' | 'tides' | 'zones' | 'config' | 'system' | 'notifications';
+export type AppTheme = 'midnight' | 'slate-grey';
+export interface TidalDataPoint { eventDate: string; value: number; }
+export interface TidalStationConfig { stations: TidalStation[]; refreshIntervalMinutes: number; }
+export interface NotificationLog { id: string; timestamp: number; channel: string; status: string; camera: string; label: string; message: string; }

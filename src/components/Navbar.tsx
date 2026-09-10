@@ -136,18 +136,18 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="p-3 sm:p-4 bg-slate-900/60 border border-slate-800 rounded-2xl">
               <div className="flex items-center gap-1.5 md:justify-end">
                 <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500 mb-0.5">Uptime</p>
-                {telemetry.isLive && (
+                {telemetry?.isLive && (
                   <span className="text-[8px] px-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold animate-pulse">LIVE</span>
                 )}
               </div>
               <p className="text-lg sm:text-xl font-mono font-bold text-emerald-400">
-                {telemetry.uptimeFormatted}
+                {telemetry?.uptimeFormatted || '00:00:00'}
               </p>
             </div>
             <div className="p-3 sm:p-4 bg-slate-900/60 border border-slate-800 rounded-2xl">
               <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500 mb-0.5">Coral TPU</p>
               <p className="text-lg sm:text-xl font-mono font-bold text-white">
-                {telemetry.coral.inferenceSpeedMs} <span className="text-xs text-slate-400 font-sans font-bold">ms</span>
+                {telemetry?.coral?.inferenceSpeedMs || '0.0'} <span className="text-xs text-slate-400 font-sans font-bold">ms</span>
               </p>
             </div>
             <div className="p-3 sm:p-4 bg-slate-900/60 border border-slate-800 rounded-2xl">

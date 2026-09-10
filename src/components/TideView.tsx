@@ -118,7 +118,7 @@ export const TideView: React.FC<TideViewProps> = ({ config }) => {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {stationData.highLow.map((item: any, idx: number) => {
+                {(stationData.highLow || []).map((item: any, idx: number) => {
                   const isHigh = item.value > 1.0; // Basic heuristic
                   return (
                     <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-slate-950/40 border border-slate-800">

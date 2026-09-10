@@ -206,6 +206,7 @@ export interface BirdNetConfig {
   liveAudioUrl?: string; // e.g. rtsp://192.168.2.150:554/live
   username?: string;
   password?: string;
+  sendDailyAlerts?: boolean;
 }
 
 export interface BirdSighting {

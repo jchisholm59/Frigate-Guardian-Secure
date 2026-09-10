@@ -36,6 +36,7 @@ Frigate Guardian is a comprehensive, real-time surveillance dashboard designed t
 *   **Live Audio Sentinel:** Listen to your yard in real-time with a built-in frequency spectrogram.
 *   **Diversity Report:** Automatic population summary of all species visiting your property.
 *   **Audio Proof:** Play back specific bird song recordings directly from your yard history.
+*   **Daily Species Sentinel:** Intelligent alerts for the first sighting of each unique species every day, preventing notification fatigue.
 
 ---
 
@@ -112,6 +113,7 @@ To enable bird song identification, go to **Notifications -> BirdNET-Go** in the
 3.  **MQTT Topic:** Set to your sightings topic (default: `birdnet-sightings`).
 4.  **Web URL:** Enter your BirdNET-Go web interface address (e.g., `http://192.168.2.210:8080`) to enable audio clip playback.
 5.  **Live Audio:** Enter the RTSP URL of your yard microphone to enable the live spectrogram.
+6.  **Daily Alerts:** Toggle "Daily Species Sentinel" to receive notifications for the first detection of each species every day.
 
 ---
 

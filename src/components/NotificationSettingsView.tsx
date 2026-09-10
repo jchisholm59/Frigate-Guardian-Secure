@@ -896,6 +896,33 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-blue-500"
               />
             </div>
+
+            <div className="sm:col-span-2 p-4 rounded-xl bg-amber-950/20 border border-amber-500/20 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center shadow-lg shadow-amber-600/20">
+                    <Bell className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-white">Daily Species Sentinel</h4>
+                    <p className="text-[10px] text-amber-500 font-bold uppercase tracking-tight">Alert on first discovery of each day</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => updateBirdnet({ sendDailyAlerts: !localSettings.birdnet?.sendDailyAlerts })}
+                  className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    localSettings.birdnet?.sendDailyAlerts ? 'bg-amber-600' : 'bg-slate-700'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      localSettings.birdnet?.sendDailyAlerts ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
             <div className="space-y-1.5">
               <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">MQTT Username (Optional)</label>
               <input

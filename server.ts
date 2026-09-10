@@ -109,8 +109,10 @@ let persistentSettings: any = {
     port: 1883,
     topic: 'birdnet-sightings',
     serverUrl: '',
+    liveAudioUrl: '',
     username: '',
-    password: ''
+    password: '',
+    sendDailyAlerts: false
   }
 };
 
@@ -362,7 +364,7 @@ async function startServer() {
               console.log('[Bird AI] Daily alert tracking reset for new day');
             }
 
-            if (!dailyAlertedSpecies.has(commonName) && sighting.confidence > 0.6) {
+            if (!dailyAlertedSpecies.has(commonName) && sighting.confidence > 0.6 && persistentSettings.birdnet?.sendDailyAlerts) {
               dailyAlertedSpecies.add(commonName);
 
               const isGmail = persistentSettings.gmail?.enabled;

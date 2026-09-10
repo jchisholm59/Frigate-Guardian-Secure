@@ -14,7 +14,7 @@ import {
   X,
   Volume2,
   Activity,
-  Waveform,
+  AudioWaveform,
   Zap,
 } from 'lucide-react';
 
@@ -147,7 +147,7 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
           <div className="relative flex-1 min-h-[120px] bg-slate-950 rounded-2xl border border-slate-800/50 overflow-hidden flex items-center justify-center">
             {isListening ? (
               <div className="flex flex-col items-center gap-2 text-slate-600">
-                <Waveform className="w-8 h-8 opacity-20" />
+                <AudioWaveform className="w-8 h-8 opacity-20" />
                 <span className="text-[10px] font-bold uppercase tracking-widest">Monitor Standby</span>
               </div>
             ) : (

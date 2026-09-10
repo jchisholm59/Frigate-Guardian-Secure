@@ -477,16 +477,28 @@ async function startServer() {
 
   // --- TIDAL DATA PROXIES (Fisheries and Oceans Canada API) ---
 
-  // Search for stations by name or code
+  // Search for stations by name or code (Smarter filtering)
   app.get('/api/tides/stations/search', async (req, res) => {
     const { q } = req.query;
     if (!q) return res.status(400).send('Query parameter q is required');
 
     try {
-      const url = `https://api-iwls.dfo-mpo.gc.ca/api/v1/stations?q=${encodeURIComponent(q as string)}`;
+      const searchTerm = (q as string).toLowerCase();
+
+      // We fetch a list of stations. DFO API is very literal with "name" or "code" parameters,
+      // so we'll fetch the full list (it's not too big) and filter it on our server to be helpful.
+      const url = `https://api-iwls.dfo-mpo.gc.ca/api/v1/stations`;
       const resp = await fetch(url);
-      const data = await resp.json();
-      res.json({ success: true, stations: data });
+      const allStations: any[] = await resp.json();
+
+      // Perform case-insensitive search on name, code, or province
+      const filtered = allStations.filter(s =>
+        (s.officialName && s.name.toLowerCase().includes(searchTerm)) ||
+        (s.code && s.code.toLowerCase().includes(searchTerm)) ||
+        (s.provinceCode && s.provinceCode.toLowerCase().includes(searchTerm))
+      ).slice(0, 15); // Return top 15 matches to keep UI clean
+
+      res.json({ success: true, stations: filtered });
     } catch (err: any) {
       console.error('[Tides] Search error:', err.message);
       res.status(500).send('Failed to search tidal stations');

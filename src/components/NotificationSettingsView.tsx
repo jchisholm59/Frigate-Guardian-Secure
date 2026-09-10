@@ -176,8 +176,8 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
               return (
                 <div key={s.id || `result-${idx}`} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/40 hover:border-cyan-500/30 transition-all">
                   <div>
-                    <p className="text-xs font-bold text-slate-200">{s.name}</p>
-                    <p className="text-[9px] text-slate-500 font-mono">{s.code} • {s.province}</p>
+                    <p className="text-xs font-bold text-slate-200">{s.officialName || s.name}</p>
+                    <p className="text-[9px] text-slate-500 font-mono">{s.code} • {s.provinceCode || s.province}</p>
                   </div>
                   <button
                     onClick={() => addStation(s)}

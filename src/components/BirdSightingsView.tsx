@@ -16,6 +16,9 @@ import {
   Activity,
   AudioWaveform,
   Zap,
+  LayoutGrid,
+  FileText,
+  PieChart,
 } from 'lucide-react';
 
 const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
@@ -33,7 +36,6 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
     setIsActive(nextActive);
 
     if (nextActive) {
-      // STARTING
       console.log('[Birds] Activating Live Yard Sentinel...');
       if (!audioContextRef.current) {
         const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
@@ -51,7 +53,6 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
 
       setupAnalyzer();
     } else {
-      // STOPPING
       console.log('[Birds] Deactivating Live Yard Sentinel.');
       if (audioRef.current) {
         audioRef.current.pause();
@@ -67,14 +68,14 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
       if (!analyzerRef.current) {
         const source = audioContextRef.current.createMediaElementSource(audioRef.current);
         const analyzer = audioContextRef.current.createAnalyser();
-        analyzer.fftSize = 128; // Smaller for punchier bars
+        analyzer.fftSize = 128;
         source.connect(analyzer);
         analyzer.connect(audioContextRef.current.destination);
         analyzerRef.current = analyzer;
       }
       drawSpectrogram();
     } catch (err) {
-      console.warn('[Birds] Could not setup audio analyzer (might be already connected):', err);
+      console.warn('[Birds] Could not setup audio analyzer:', err);
     }
   };
 
@@ -89,11 +90,9 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
     const dataArray = new Uint8Array(bufferLength);
 
     const render = () => {
-      if (!isActive) return;
       animationRef.current = requestAnimationFrame(render);
       analyzerRef.current!.getByteFrequencyData(dataArray);
 
-      // Clear with transparency
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const barWidth = (canvas.width / bufferLength) * 2;
@@ -102,18 +101,17 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
 
       for (let i = 0; i < bufferLength; i++) {
         barHeight = (dataArray[i] / 255) * canvas.height;
-
-        // Gradient color based on frequency
-        const hue = 200 + (i / bufferLength) * 60; // Blue to Cyan range
+        const hue = 200 + (i / bufferLength) * 60;
         ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.9)`;
-
-        // Draw bars with rounded tops
         const r = 3;
         const bh = Math.max(r * 2, barHeight);
         ctx.beginPath();
-        ctx.roundRect(x, canvas.height - bh, barWidth - 2, bh, r);
+        if (ctx.roundRect) {
+            ctx.roundRect(x, canvas.height - bh, barWidth - 2, bh, r);
+        } else {
+            ctx.rect(x, canvas.height - bh, barWidth - 2, bh);
+        }
         ctx.fill();
-
         x += barWidth;
       }
     };
@@ -131,7 +129,6 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl animate-in slide-in-from-bottom duration-500">
       <div className="flex flex-col md:flex-row h-full">
-        {/* Visualizer Panel */}
         <div className="flex-1 p-6 flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -190,7 +187,6 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
           </div>
         </div>
 
-        {/* Info Sidebar */}
         <div className="w-full md:w-64 bg-slate-950/50 border-l border-slate-800 p-6 flex flex-col justify-between gap-6">
           <div className="space-y-4">
             <div className="space-y-1">
@@ -225,6 +221,82 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
   );
 };
 
+interface IntelligenceReportModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  sightings: BirdSighting[];
+}
+
+const IntelligenceReportModal: React.FC<IntelligenceReportModalProps> = ({ isOpen, onClose, sightings }) => {
+  if (!isOpen) return null;
+
+  const speciesMap: Record<string, { common: string; scientific: string; count: number; maxConfidence: number }> = {};
+  sightings.forEach(s => {
+    if (!speciesMap[s.scientificName]) {
+      speciesMap[s.scientificName] = { common: s.commonName, scientific: s.scientificName, count: 0, maxConfidence: 0 };
+    }
+    speciesMap[s.scientificName].count += 1;
+    speciesMap[s.scientificName].maxConfidence = Math.max(speciesMap[s.scientificName].maxConfidence, s.confidence);
+  });
+
+  const speciesList = Object.values(speciesMap).sort((a, b) => b.count - a.count);
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="relative w-full max-w-2xl rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-600/20">
+              <PieChart className="w-5 h-5" />
+            </div>
+            <h3 className="text-xl font-black uppercase tracking-tight text-white">Yard Intelligence Report</h3>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 border border-slate-700 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Detections</span>
+              <p className="text-2xl font-black text-white">{sightings.length}</p>
+            </div>
+            <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Species Discovered</span>
+              <p className="text-2xl font-black text-white">{speciesList.length}</p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 px-1">Species Breakdown</h4>
+            <div className="space-y-2">
+              {speciesList.map((sp, idx) => (
+                <div key={idx} className="flex items-center justify-between p-3.5 rounded-xl bg-slate-950/40 border border-slate-800/60">
+                  <div>
+                    <p className="text-sm font-black text-white uppercase tracking-tight">{sp.common}</p>
+                    <p className="text-[10px] text-slate-500 italic font-medium">{sp.scientific}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-black text-blue-400">{sp.count}x</p>
+                    <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Max {Math.round(sp.maxConfidence * 100)}%</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 bg-slate-950/50 border-t border-slate-800">
+          <button onClick={onClose} className="w-full py-3 rounded-2xl bg-white text-slate-950 font-black uppercase tracking-widest text-xs hover:bg-slate-100 transition-colors">
+            Dismiss Report
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 interface BirdSightingsViewProps {
   sightings: BirdSighting[];
   config?: BirdNetConfig;
@@ -232,28 +304,20 @@ interface BirdSightingsViewProps {
   onClear: () => void;
 }
 
-export const BirdSightingsView: React.FC<BirdSightingsViewProps> = ({
-  sightings,
-  config,
-  onRefresh,
-  onClear,
-}) => {
+export const BirdSightingsView: React.FC<BirdSightingsViewProps> = ({ sightings, config, onRefresh, onClear }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [minConfidence, setMinConfidence] = useState(0.5);
+  const [isReportOpen, setIsReportOpen] = useState(false);
 
   const filteredSightings = sightings.filter((s) => {
-    const matchesSearch =
-      s.commonName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.scientificName.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesConfidence = s.confidence >= minConfidence;
-    return matchesSearch && matchesConfidence;
+    const matchesSearch = s.commonName.toLowerCase().includes(searchQuery.toLowerCase()) || s.scientificName.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesSearch && s.confidence >= minConfidence;
   });
 
   const speciesCount = new Set(sightings.map((s) => s.scientificName)).size;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Header Stats Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm">
           <div className="flex items-center gap-3 mb-3">
@@ -287,150 +351,92 @@ export const BirdSightingsView: React.FC<BirdSightingsViewProps> = ({
             </div>
             <span className="text-xs font-mono font-bold text-white">{Math.round(minConfidence * 100)}%</span>
           </div>
-          <input
-            type="range"
-            min="0.1"
-            max="0.95"
-            step="0.05"
-            value={minConfidence}
-            onChange={(e) => setMinConfidence(parseFloat(e.target.value))}
-            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 mt-4"
-          />
+          <input type="range" min="0.1" max="0.95" step="0.05" value={minConfidence} onChange={(e) => setMinConfidence(parseFloat(e.target.value))} className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 mt-4" />
         </div>
       </div>
 
-      {config?.enabled && config.liveAudioUrl && (
-        <LiveAudioMonitor rtspUrl={config.liveAudioUrl} />
-      )}
+      {config?.enabled && config.liveAudioUrl && <LiveAudioMonitor rtspUrl={config.liveAudioUrl} />}
 
-      {/* Control Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-md">
         <div className="relative flex-1 min-w-[280px]">
           <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Search species name (e.g. 'Blue Jay')..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors"
-          />
+          <input type="text" placeholder="Search species name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500 transition-colors" />
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            onClick={onRefresh}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white transition-all shadow-sm"
-          >
+          <button onClick={() => setIsReportOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:bg-blue-500 transition-all">
+            <FileText className="w-3.5 h-3.5" />
+            <span>Intelligence Report</span>
+          </button>
+          <button onClick={onRefresh} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white transition-all shadow-sm">
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Sync</span>
           </button>
-          <button
-            onClick={onClear}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-900 border border-slate-800 hover:border-rose-500/40 text-slate-400 hover:text-rose-400 transition-all shadow-sm"
-          >
+          <button onClick={onClear} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-900 border border-slate-800 hover:border-rose-500/40 text-slate-400 hover:text-rose-400 transition-all shadow-sm">
             <Trash2 className="w-3.5 h-3.5" />
             <span>Reset Log</span>
           </button>
         </div>
       </div>
 
-      {/* Sightings Grid */}
       {filteredSightings.length === 0 ? (
         <div className="py-20 flex flex-col items-center justify-center bg-slate-900/40 rounded-3xl border border-dashed border-slate-800 text-center">
           <div className="w-16 h-16 rounded-full bg-slate-950 flex items-center justify-center border border-slate-800 mb-4">
             <Bird className="w-8 h-8 text-slate-700" />
           </div>
           <h3 className="text-white font-black uppercase tracking-widest text-sm">No Sightings Found</h3>
-          <p className="text-slate-500 text-xs mt-1 max-w-[240px]">
-            Adjust your filters or ensure BirdNET-Go is transmitting MQTT data.
-          </p>
+          <p className="text-slate-500 text-xs mt-1 max-w-[240px]">Adjust your filters or ensure BirdNET-Go is transmitting MQTT data.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredSightings.map((s) => (
-            <BirdSightingCard
-              key={s.id}
-              sighting={s}
-              serverUrl={config?.serverUrl}
-            />
+            <BirdSightingCard key={s.id} sighting={s} serverUrl={config?.serverUrl} />
           ))}
         </div>
       )}
+
+      <IntelligenceReportModal isOpen={isReportOpen} onClose={() => setIsReportOpen(false)} sightings={sightings} />
     </div>
   );
 };
 
-const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }> = ({
-  sighting,
-  serverUrl
-}) => {
+const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }> = ({ sighting, serverUrl }) => {
   const [isPlaying, setIsPlaying] = useState(false);
-  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Fallback audio URL if missing (for older sightings before config was set)
-  const effectiveAudioUrl = sighting.audioUrl || (serverUrl && sighting.id && !sighting.id.startsWith('bird-')
+  const effectiveAudioUrl = sighting.audioUrl || (serverUrl && sighting.id && !String(sighting.id).startsWith('bird-')
     ? `/api/birds/proxy/audio/${sighting.id}?serverUrl=${encodeURIComponent(serverUrl)}`
     : null);
 
-  const formattedTime = new Date(sighting.timestamp).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  const formattedDate = new Date(sighting.timestamp).toLocaleDateString([], {
-    month: 'short',
-    day: 'numeric',
-  });
-
   const toggleAudio = (e: React.MouseEvent) => {
     e.stopPropagation();
-    console.log(`[Birds] Toggling audio playback for: ${sighting.commonName} (${sighting.id})`);
+    console.log(`[Birds] Toggling audio: ${sighting.commonName} (${sighting.id}) URL: ${effectiveAudioUrl}`);
 
-    if (!audioRef.current) {
-      console.warn('[Birds] Audio element not found');
-      return;
-    }
-
-    if (!effectiveAudioUrl) {
-      console.warn('[Birds] No audio URL available for this sighting');
-      return;
-    }
+    if (!audioRef.current || !effectiveAudioUrl) return;
 
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      // Force reload to ensure the proxy is hit
-      if (audioRef.current.src !== window.location.origin + effectiveAudioUrl) {
-        audioRef.current.load();
-      }
-
-      audioRef.current.play()
-        .then(() => setIsPlaying(true))
-        .catch(err => {
-          console.error('[Birds] Playback failed:', err);
-          setIsPlaying(false);
-        });
+      audioRef.current.load();
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(err => {
+        console.error('[Birds] Playback failed:', err);
+        setIsPlaying(false);
+      });
     }
   };
+
+  const formattedTime = new Date(sighting.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const formattedDate = new Date(sighting.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' });
 
   return (
     <div className="group bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm hover:border-blue-500/50 transition-all duration-300 flex flex-col">
       <div className="relative aspect-square bg-slate-950 flex items-center justify-center overflow-hidden">
-        {/* Bird Image with Wikipedia Thumbnail */}
         {sighting.imageUrl && sighting.imageUrl.startsWith('http') ? (
-          <img
-            src={sighting.imageUrl}
-            alt={sighting.commonName}
-            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
-          />
+          <img src={sighting.imageUrl} alt={sighting.commonName} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         ) : (
           <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px]" />
         )}
-
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 pointer-events-none">
           {(!sighting.imageUrl || !sighting.imageUrl.startsWith('http')) && (
             <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform duration-500">
@@ -443,63 +449,33 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
           </div>
         </div>
 
-        {/* Play Button Overlay */}
         {effectiveAudioUrl && (
-          <div
-            onClick={toggleAudio}
-            className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-          >
+          <div onClick={toggleAudio} className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
             <div className="w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-xl transform group-hover:scale-110 transition-transform">
               {isPlaying ? <X className="w-6 h-6" /> : <Volume2 className="w-6 h-6" />}
             </div>
-            <audio
-              ref={audioRef}
-              src={effectiveAudioUrl}
-              onEnded={() => setIsPlaying(false)}
-              onPause={() => setIsPlaying(false)}
-            />
+            <audio ref={audioRef} src={effectiveAudioUrl} onEnded={() => setIsPlaying(false)} onPause={() => setIsPlaying(false)} crossOrigin="anonymous" />
           </div>
         )}
 
-        {/* Confidence Badge */}
         <div className="absolute top-3 right-3 z-20">
           <div className="px-2 py-1 rounded-lg bg-slate-950/80 backdrop-blur-md border border-slate-800 text-[10px] font-mono font-bold text-emerald-400">
             {Math.round(sighting.confidence * 100)}%
           </div>
         </div>
-
-        {/* Timestamp HUD */}
         <div className="absolute bottom-3 left-3 z-20 flex flex-col">
-          <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">
-            {formattedDate}
-          </div>
-          <div className="text-xs font-mono font-bold text-white tracking-tighter">
-            {formattedTime}
-          </div>
+          <div className="text-[9px] font-black uppercase tracking-widest text-slate-500">{formattedDate}</div>
+          <div className="text-xs font-mono font-bold text-white tracking-tighter">{formattedTime}</div>
         </div>
       </div>
-
       <div className="p-4 flex-1 flex flex-col gap-2">
         <div>
-          <h3 className="text-sm font-black text-white uppercase tracking-tight leading-tight group-hover:text-blue-400 transition-colors">
-            {sighting.commonName}
-          </h3>
-          <p className="text-[10px] text-slate-500 italic font-medium mt-0.5">
-            {sighting.scientificName}
-          </p>
+          <h3 className="text-sm font-black text-white uppercase tracking-tight leading-tight group-hover:text-blue-400 transition-colors">{sighting.commonName}</h3>
+          <p className="text-[10px] text-slate-500 italic font-medium mt-0.5">{sighting.scientificName}</p>
         </div>
-
         <div className="mt-auto pt-3 border-t border-slate-800/50 flex items-center justify-between">
-          <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">
-            via {sighting.sourceNode}
-          </span>
-          <a
-            href={sighting.imageUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
-            title="View species on Wikipedia"
-          >
+          <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">via {sighting.sourceNode}</span>
+          <a href={`https://en.wikipedia.org/wiki/${encodeURIComponent(sighting.commonName)}`} target="_blank" rel="noreferrer" className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors">
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
         </div>

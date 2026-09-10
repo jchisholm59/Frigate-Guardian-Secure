@@ -38,6 +38,7 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
   const [currentTime, setCurrentTime] = useState<number>(0); // 0 to 10 seconds
   const [speed, setSpeed] = useState<number>(1);
   const [isLooping, setIsLooping] = useState<boolean>(true);
+  const [isMuted, setIsMuted] = useState<boolean>(false);
   const [showBox, setShowBox] = useState<boolean>(true);
   const [videoError, setVideoError] = useState<boolean>(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -185,7 +186,7 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
               src={event.clipUrl}
               className="w-full h-full object-contain"
               playsInline
-              muted
+              muted={isMuted}
               loop={isLooping}
               onTimeUpdate={() => {
                 if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
@@ -326,6 +327,18 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
                 title="Jump directly to trigger frame"
               >
                 Jump to Trigger (0s)
+              </button>
+
+              <button
+                onClick={() => setIsMuted(!isMuted)}
+                className={`p-2 rounded-xl border transition-colors ${
+                  isMuted
+                    ? 'bg-rose-950/40 text-rose-400 border-rose-500/30'
+                    : 'bg-slate-900 text-slate-300 border-slate-800 hover:text-white'
+                }`}
+                title={isMuted ? 'Unmute Audio' : 'Mute Audio'}
+              >
+                {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
               </button>
             </div>
 

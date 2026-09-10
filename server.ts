@@ -74,12 +74,13 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const SETTINGS_FILE = path.join(DATA_DIR, 'notification_settings.json');
 const MQTT_CONFIG_FILE = path.join(DATA_DIR, 'mqtt_config.json');
 const BIRD_SIGHTINGS_FILE = path.join(DATA_DIR, 'bird_sightings.json');
+const SERVERS_FILE = path.join(DATA_DIR, 'frigate_servers.json');
 
 // Migration: Move files from project .data directory to home directory if they exist
 try {
   const legacyDir = path.join(__dirname, '.data');
   if (fs.existsSync(legacyDir)) {
-    const files = ['notification_settings.json', 'mqtt_config.json', 'bird_sightings.json'];
+    const files = ['notification_settings.json', 'mqtt_config.json', 'bird_sightings.json', 'frigate_servers.json'];
     for (const file of files) {
       const oldPath = path.join(legacyDir, file);
       const newPath = path.join(DATA_DIR, file);
@@ -117,6 +118,7 @@ let persistentSettings: any = {
 };
 
 let birdSightings: any[] = [];
+let persistentServers: any[] = [];
 let speciesFactCache: Record<string, string> = {};
 let dailyAlertedSpecies = new Set<string>();
 let lastBirdAlertReset = new Date().getUTCDate();
@@ -141,6 +143,17 @@ try {
   }
 } catch (err) {
   console.error('[Birds] Failed to load sightings:', err);
+}
+
+// Load frigate servers on startup
+try {
+  if (fs.existsSync(SERVERS_FILE)) {
+    const data = fs.readFileSync(SERVERS_FILE, 'utf-8');
+    persistentServers = JSON.parse(data);
+    console.log(`[Servers] Loaded ${persistentServers.length} servers from disk`);
+  }
+} catch (err) {
+  console.error('[Servers] Failed to load servers:', err);
 }
 
 function saveBirdSightings() {
@@ -452,6 +465,26 @@ async function startServer() {
 
   app.get('/api/birds/status', (_req, res) => {
     res.json({ success: true, status: birdMqttStatus, config: persistentSettings.birdnet });
+  });
+
+  // Get all Frigate servers
+  app.get('/api/frigate/servers', (_req, res) => {
+    res.json({ success: true, servers: persistentServers });
+  });
+
+  // Update all Frigate servers
+  app.post('/api/frigate/servers', (req, res) => {
+    const { servers } = req.body;
+    if (Array.isArray(servers)) {
+      persistentServers = servers;
+      try {
+        fs.writeFileSync(SERVERS_FILE, JSON.stringify(persistentServers, null, 2));
+        console.log(`[Servers] Updated servers list (${persistentServers.length} servers)`);
+      } catch (err) {
+        console.error('[Servers] Failed to save servers to disk:', err);
+      }
+    }
+    res.json({ success: true, servers: persistentServers });
   });
 
   // On-demand AI Bird Fact

@@ -65,21 +65,50 @@ export default function App() {
     } catch (e) {}
   }, [dummyCamerasEnabled]);
 
-  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(() => {
-    try {
-      const saved = localStorage.getItem('frigate_notification_settings');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return DEFAULT_NOTIFICATION_SETTINGS;
-  });
+  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
 
+  const isInitialMount = useRef(true);
   const lastSyncedNotifRef = useRef<string>('');
+
+  // Initial load from server
   useEffect(() => {
+    const initFromBackend = async () => {
+      try {
+        // Load settings
+        const notifRes = await fetch('/api/notifications/settings');
+        const notifData = await notifRes.json();
+        if (notifData.settings) {
+          setNotificationSettings(notifData.settings);
+          lastSyncedNotifRef.current = JSON.stringify(notifData.settings);
+        }
+
+        // Load servers
+        const serversRes = await fetch('/api/frigate/servers');
+        const serversData = await serversRes.json();
+        if (Array.isArray(serversData.servers) && serversData.servers.length > 0) {
+          setServers(serversData.servers);
+        }
+      } catch (err) {
+        console.warn('Failed to load initial settings from server, falling back to local storage.');
+        // Optional: read from local storage if server fails
+        const savedNotif = localStorage.getItem('frigate_notification_settings');
+        if (savedNotif) setNotificationSettings(JSON.parse(savedNotif));
+        const savedServers = localStorage.getItem('frigate_configured_servers');
+        if (savedServers) setServers(JSON.parse(savedServers));
+      }
+      isInitialMount.current = false;
+    };
+
+    initFromBackend();
+  }, []);
+
+  useEffect(() => {
+    if (isInitialMount.current) return;
+
     try {
       localStorage.setItem('frigate_notification_settings', JSON.stringify(notificationSettings));
 
       const configJson = JSON.stringify(notificationSettings);
-      // Only sync if the configuration HAS ACTUALLY CHANGED to avoid infinite loops
       if (configJson !== lastSyncedNotifRef.current) {
         fetch('/api/notifications/settings', {
           method: 'POST',
@@ -114,16 +143,21 @@ export default function App() {
   };
 
   // Multi-server state
-  const [servers, setServers] = useState<FrigateServerConfig[]>(() => {
+  const [servers, setServers] = useState<FrigateServerConfig[]>(DEFAULT_SERVERS);
+
+  useEffect(() => {
+    if (isInitialMount.current) return;
     try {
-      const saved = localStorage.getItem('frigate_configured_servers');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
+      localStorage.setItem('frigate_configured_servers', JSON.stringify(servers));
+
+      // Sync to server
+      fetch('/api/frigate/servers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ servers }),
+      }).catch(err => console.error('Failed to sync servers to backend:', err));
     } catch (e) {}
-    return DEFAULT_SERVERS;
-  });
+  }, [servers]);
 
   const [activeServerId, setActiveServerId] = useState<string>(() => {
     try {

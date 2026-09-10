@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+in import React, { useState, useEffect } from 'react';
 import {
   Mail,
   MessageSquare,
@@ -17,8 +17,9 @@ import {
   Globe,
   Radio,
   Clock,
+  Bird,
 } from 'lucide-react';
-import { NotificationSettings, NotificationLog } from '../types';
+import { NotificationSettings, NotificationLog, BirdNetConfig } from '../types';
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   gmail: {
@@ -53,6 +54,14 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     cooldownSeconds: 15,
     ignoreParkedCars: true,
   },
+  birdnet: {
+    enabled: false,
+    brokerHost: '',
+    port: 1883,
+    topic: 'birdnet-sightings',
+    username: '',
+    password: ''
+  }
 };
 
 interface NotificationSettingsViewProps {
@@ -67,7 +76,7 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
   availableCameras = [],
 }) => {
   const [localSettings, setLocalSettings] = useState<NotificationSettings>(settings);
-  const [activeChannelTab, setActiveChannelTab] = useState<'gmail' | 'slack' | 'discord' | 'filters' | 'logs'>('gmail');
+  const [activeChannelTab, setActiveChannelTab] = useState<'gmail' | 'slack' | 'discord' | 'birdnet' | 'filters' | 'logs'>('gmail');
   const [showSmtpAdvanced, setShowSmtpAdvanced] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   
@@ -153,6 +162,15 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
     const updated = {
       ...localSettings,
       filters: { ...localSettings.filters, ...partial },
+    };
+    setLocalSettings(updated);
+    onUpdateSettings(updated);
+  };
+
+  const updateBirdnet = (partial: Partial<BirdNetConfig>) => {
+    const updated = {
+      ...localSettings,
+      birdnet: { ...(localSettings.birdnet || DEFAULT_NOTIFICATION_SETTINGS.birdnet!), ...partial },
     };
     setLocalSettings(updated);
     onUpdateSettings(updated);
@@ -299,6 +317,26 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
             <Bell className="w-3.5 h-3.5 text-white" />
             <span>Discord</span>
             {localSettings.discord.enabled && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            )}
+          </button>
+
+          {/* BirdNET Tab */}
+          <button
+            id="tab-notif-birdnet"
+            onClick={() => {
+              setActiveChannelTab('birdnet');
+              setTestResult(null);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${
+              activeChannelTab === 'birdnet'
+                ? 'bg-blue-600 text-white shadow-md'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <Bird className="w-3.5 h-3.5 text-white" />
+            <span>BirdNET-Go</span>
+            {localSettings.birdnet?.enabled && (
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
             )}
           </button>
@@ -767,6 +805,125 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
               )}
               <span>{testingChannel === 'discord' ? 'Posting to Discord...' : 'Send Test Alert'}</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- BIRDNET-GO TAB -------------------- */}
+      {activeChannelTab === 'birdnet' && (
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-5 shadow-md">
+          {/* Header & Enable Toggle */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/30 text-blue-400">
+                <Bird className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black uppercase tracking-tight text-white">BirdNET-Go Integration</h4>
+                <p className="text-xs text-slate-400">
+                  Connect to your BirdNET-Go instance via MQTT to track bird sightings in your yard.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  id="toggle-birdnet-enabled"
+                  type="checkbox"
+                  checked={localSettings.birdnet?.enabled}
+                  onChange={(e) => updateBirdnet({ enabled: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                <span className="ml-2.5 text-xs font-black uppercase tracking-wider text-slate-300">
+                  {localSettings.birdnet?.enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">MQTT Broker Host</label>
+              <input
+                type="text"
+                placeholder="192.168.1.xxx"
+                value={localSettings.birdnet?.brokerHost || ''}
+                onChange={(e) => updateBirdnet({ brokerHost: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-700 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">BirdNET-Go Web URL</label>
+              <input
+                type="text"
+                placeholder="http://192.168.1.xxx:8080"
+                value={localSettings.birdnet?.serverUrl || ''}
+                onChange={(e) => updateBirdnet({ serverUrl: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-700 focus:outline-none focus:border-blue-500"
+              />
+              <p className="text-[10px] text-slate-500 italic mt-1">Required for audio clip playback (e.g. http://192.168.2.210:8080)</p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Live Audio RTSP URL</label>
+              <input
+                type="text"
+                placeholder="rtsp://192.168.1.xxx:554/live"
+                value={localSettings.birdnet?.liveAudioUrl || ''}
+                onChange={(e) => updateBirdnet({ liveAudioUrl: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-700 focus:outline-none focus:border-blue-500"
+              />
+              <p className="text-[10px] text-slate-500 italic mt-1">Direct RTSP feed from your ESP32 audio server.</p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">MQTT Port</label>
+              <input
+                type="number"
+                placeholder="1883"
+                value={localSettings.birdnet?.port || 1883}
+                onChange={(e) => updateBirdnet({ port: Number(e.target.value) })}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">MQTT Topic</label>
+              <input
+                type="text"
+                placeholder="birdnet-sightings"
+                value={localSettings.birdnet?.topic || 'birdnet-sightings'}
+                onChange={(e) => updateBirdnet({ topic: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">MQTT Username (Optional)</label>
+              <input
+                type="text"
+                placeholder="None"
+                value={localSettings.birdnet?.username || ''}
+                onChange={(e) => updateBirdnet({ username: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">MQTT Password (Optional)</label>
+              <input
+                type="password"
+                placeholder="None"
+                value={localSettings.birdnet?.password || ''}
+                onChange={(e) => updateBirdnet({ password: e.target.value })}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-blue-900/10 border border-blue-500/20 text-xs text-blue-300">
+            <p className="font-bold mb-1">Cottage Compatibility Mode:</p>
+            <p className="opacity-80 leading-relaxed">
+              If your cottage uses a different MQTT broker, you can specify its unique IP and credentials here.
+              The sightings will be synced to this dashboard in real-time.
+            </p>
           </div>
         </div>
       )}

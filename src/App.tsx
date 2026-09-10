@@ -17,6 +17,7 @@ import { Navbar } from './components/Navbar';
 import { LiveGrid } from './components/LiveGrid';
 import { EventsReview } from './components/EventsReview';
 import { ZoneEditor } from './components/ZoneEditor';
+import { BirdSightingsView } from './components/BirdSightingsView';
 import { ConfigStudio } from './components/ConfigStudio';
 import { SystemTelemetry } from './components/SystemTelemetry';
 import { CameraDetailModal } from './components/CameraDetailModal';
@@ -176,6 +177,7 @@ export default function App() {
     return dummyCamerasEnabled ? INITIAL_CAMERAS : [];
   });
   const [events, setEvents] = useState<FrigateEvent[]>(INITIAL_EVENTS);
+  const [birdSightings, setBirdSightings] = useState<any[]>([]);
   const [telemetry, setTelemetry] = useState<SystemTelemetryData>(INITIAL_TELEMETRY);
   const [mqttStatus, setMqttStatus] = useState<MqttStatusInfo>({
     connected: false,
@@ -365,6 +367,23 @@ export default function App() {
     }
   };
 
+  // Fetch BirdNET sightings
+  const handleFetchBirdSightings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/birds/sightings');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.sightings)) {
+        setBirdSightings(data.sightings);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch bird sightings:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    handleFetchBirdSightings();
+  }, [handleFetchBirdSightings]);
+
   // Live SSE listener for real-time Frigate events
   useEffect(() => {
     let es: EventSource | null = null;
@@ -375,6 +394,8 @@ export default function App() {
           const payload = JSON.parse(event.data);
           if (payload.type === 'status' && payload.status) {
             setMqttStatus(payload.status);
+          } else if (payload.type === 'bird_sighting' && payload.sighting) {
+            setBirdSightings((prev) => [payload.sighting, ...prev].slice(0, 500));
           } else if (payload.type === 'frigate_event' && payload.event) {
             const newEvt: FrigateEvent = payload.event;
 
@@ -681,6 +702,17 @@ export default function App() {
             onUpdateEventAiSummary={handleUpdateEventAiSummary}
             onRefreshEvents={() => handleSyncServerCameras(activeServer)}
             isLiveServerConnected={!activeServer.isSimulated}
+          />
+        )}
+
+        {activeTab === 'birds' && (
+          <BirdSightingsView
+            sightings={birdSightings}
+            config={notificationSettings.birdnet}
+            onRefresh={handleFetchBirdSightings}
+            onClear={() => {
+              fetch('/api/birds/clear', { method: 'POST' }).then(() => setBirdSightings([]));
+            }}
           />
         )}
 

@@ -194,6 +194,30 @@ export interface NotificationSettings {
   slack: SlackNotificationConfig;
   discord: DiscordNotificationConfig;
   filters: NotificationFilterConfig;
+  birdnet?: BirdNetConfig;
+}
+
+export interface BirdNetConfig {
+  enabled: boolean;
+  brokerHost: string;
+  port: number;
+  topic: string;
+  serverUrl?: string; // e.g. http://192.168.2.210:8080
+  liveAudioUrl?: string; // e.g. rtsp://192.168.2.150:554/live
+  username?: string;
+  password?: string;
+}
+
+export interface BirdSighting {
+  id: string;
+  commonName: string;
+  scientificName: string;
+  confidence: number;
+  timestamp: number;
+  sourceNode: string;
+  imageUrl?: string;
+  audioUrl?: string;
+  isAiAnalyzed?: boolean;
 }
 
 export interface NotificationLog {
@@ -208,7 +232,7 @@ export interface NotificationLog {
   details?: string;
 }
 
-export type ActiveTab = 'live' | 'events' | 'zones' | 'config' | 'system' | 'notifications';
+export type ActiveTab = 'live' | 'events' | 'birds' | 'zones' | 'config' | 'system' | 'notifications';
 
 export type AppTheme = 'midnight' | 'slate-grey';
 

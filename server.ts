@@ -4,7 +4,7 @@ import http from 'http';
 import https from 'https';
 import path from 'path';
 import fs from 'fs';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { createServer as createViteServer } from 'vite';
@@ -73,12 +73,13 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const SETTINGS_FILE = path.join(DATA_DIR, 'notification_settings.json');
 const MQTT_CONFIG_FILE = path.join(DATA_DIR, 'mqtt_config.json');
+const BIRD_SIGHTINGS_FILE = path.join(DATA_DIR, 'bird_sightings.json');
 
 // Migration: Move files from project .data directory to home directory if they exist
 try {
   const legacyDir = path.join(__dirname, '.data');
   if (fs.existsSync(legacyDir)) {
-    const files = ['notification_settings.json', 'mqtt_config.json'];
+    const files = ['notification_settings.json', 'mqtt_config.json', 'bird_sightings.json'];
     for (const file of files) {
       const oldPath = path.join(legacyDir, file);
       const newPath = path.join(DATA_DIR, file);
@@ -101,8 +102,19 @@ let persistentSettings: any = {
     minThreatLevel: 'all',
     targetLabels: [],
     selectedCameras: []
+  },
+  birdnet: {
+    enabled: false,
+    brokerHost: '',
+    port: 1883,
+    topic: 'birdnet-sightings',
+    serverUrl: '',
+    username: '',
+    password: ''
   }
 };
+
+let birdSightings: any[] = [];
 
 // Load settings on startup
 try {
@@ -113,6 +125,26 @@ try {
   }
 } catch (err) {
   console.error('[Settings] Failed to load persistent settings:', err);
+}
+
+// Load bird sightings on startup
+try {
+  if (fs.existsSync(BIRD_SIGHTINGS_FILE)) {
+    const data = fs.readFileSync(BIRD_SIGHTINGS_FILE, 'utf-8');
+    birdSightings = JSON.parse(data);
+    console.log(`[Birds] Loaded ${birdSightings.length} sightings from disk`);
+  }
+} catch (err) {
+  console.error('[Birds] Failed to load sightings:', err);
+}
+
+function saveBirdSightings() {
+  try {
+    const newData = JSON.stringify(birdSightings.slice(0, 1000), null, 2); // Keep last 1000
+    fs.writeFileSync(BIRD_SIGHTINGS_FILE, newData);
+  } catch (err) {
+    console.error('[Birds] Failed to save sightings:', err);
+  }
 }
 
 function savePersistentSettings() {
@@ -188,14 +220,223 @@ async function startServer() {
     return null;
   }
 
+  let birdMqttClient: MqttClient | null = null;
+  const birdMqttStatus = {
+    connected: false,
+    connecting: false,
+    error: null as string | null
+  };
+
+  function connectToBirdMqtt() {
+    const config = persistentSettings.birdnet;
+    if (!config || !config.enabled || !config.brokerHost) {
+      if (birdMqttClient) {
+        birdMqttClient.end(true);
+        birdMqttClient = null;
+      }
+      birdMqttStatus.connected = false;
+      birdMqttStatus.connecting = false;
+      return;
+    }
+
+    if (birdMqttClient) {
+      birdMqttClient.end(true);
+      birdMqttClient = null;
+    }
+
+    const brokerUrl = `mqtt://${config.brokerHost.replace(/^mqtt:\/\//, '')}:${config.port || 1883}`;
+    birdMqttStatus.connecting = true;
+    birdMqttStatus.error = null;
+
+    console.log(`[BirdNET] Attempting connection to ${brokerUrl}...`);
+
+    const clientId = `birdnet-guardian-${Math.random().toString(16).slice(2, 8)}`;
+    const clientOptions: any = {
+      clientId,
+      connectTimeout: 10000,
+      reconnectPeriod: 10000,
+      clean: true,
+    };
+    if (config.username) clientOptions.username = config.username;
+    if (config.password) clientOptions.password = config.password;
+
+    try {
+      birdMqttClient = mqtt.connect(brokerUrl, clientOptions);
+
+      birdMqttClient.on('connect', () => {
+        console.log(`[BirdNET] Connected to ${brokerUrl}`);
+        birdMqttStatus.connected = true;
+        birdMqttStatus.connecting = false;
+        birdMqttStatus.error = null;
+
+        const topic = config.topic || 'birdnet-sightings';
+        birdMqttClient?.subscribe(topic, (err) => {
+          if (err) console.error('[BirdNET] Subscription error:', err);
+          else console.log(`[BirdNET] Subscribed to ${topic}`);
+        });
+      });
+
+      birdMqttClient.on('message', (topic, messageBuffer) => {
+        try {
+          const payload = JSON.parse(messageBuffer.toString('utf-8'));
+          // BirdNET-Go typically sends commonName, scientificName, confidence, etc.
+          if (payload.commonName || payload.CommonName) {
+            const detectionId = payload.detectionId || payload.id;
+            const sighting = {
+              id: detectionId || `bird-${Date.now()}`,
+              commonName: payload.commonName || payload.CommonName,
+              scientificName: payload.scientificName || payload.ScientificName,
+              confidence: payload.confidence || payload.Confidence || 0,
+              timestamp: Date.now(),
+              sourceNode: payload.SourceNode || 'BirdNET-Go',
+              imageUrl: `https://en.wikipedia.org/wiki/${encodeURIComponent(payload.commonName || payload.CommonName)}`,
+              audioUrl: config.serverUrl && detectionId
+                ? `/api/birds/proxy/audio/${detectionId}?serverUrl=${encodeURIComponent(config.serverUrl)}`
+                : undefined
+            };
+
+            birdSightings.unshift(sighting);
+            if (birdSightings.length > 500) birdSightings.pop();
+            saveBirdSightings();
+
+            broadcastToSse({ type: 'bird_sighting', sighting });
+            console.log(`[BirdNET] Heard: ${sighting.commonName} (${Math.round(sighting.confidence * 100)}%)`);
+          }
+        } catch (err) {
+          console.error('[BirdNET] Failed to parse message:', err);
+        }
+      });
+
+      birdMqttClient.on('error', (err) => {
+        birdMqttStatus.error = err.message;
+        birdMqttStatus.connecting = false;
+        birdMqttStatus.connected = false;
+      });
+
+      birdMqttClient.on('close', () => {
+        birdMqttStatus.connected = false;
+        birdMqttStatus.connecting = false;
+      });
+    } catch (e: any) {
+      birdMqttStatus.error = e.message;
+      birdMqttStatus.connecting = false;
+    }
+  }
+
+  // Initialize BirdNET if enabled
+  if (persistentSettings.birdnet?.enabled) {
+    connectToBirdMqtt();
+  }
+
   app.post('/api/notifications/settings', (req, res) => {
     const { settings } = req.body;
     if (settings) {
+      const birdnetChanged = JSON.stringify(persistentSettings.birdnet) !== JSON.stringify(settings.birdnet);
       persistentSettings = settings;
       savePersistentSettings();
       console.log(`[Settings] Updated. Gmail Enabled: ${persistentSettings.gmail?.enabled}, Slack: ${persistentSettings.slack?.enabled}, Discord: ${persistentSettings.discord?.enabled}`);
+
+      if (birdnetChanged) {
+        console.log('[BirdNET] Settings changed, reconnecting...');
+        connectToBirdMqtt();
+      }
     }
     res.json({ success: true, settings: persistentSettings });
+  });
+
+  app.get('/api/birds/sightings', (_req, res) => {
+    res.json({ success: true, sightings: birdSightings });
+  });
+
+  app.post('/api/birds/clear', (_req, res) => {
+    birdSightings = [];
+    saveBirdSightings();
+    res.json({ success: true });
+  });
+
+  app.get('/api/birds/status', (_req, res) => {
+    res.json({ success: true, status: birdMqttStatus, config: persistentSettings.birdnet });
+  });
+
+  // Proxy BirdNET audio clips
+  app.get('/api/birds/proxy/audio/:id', async (req, res) => {
+    const { id } = req.params;
+    const { serverUrl } = req.query;
+
+    if (!serverUrl || !id) {
+      return res.status(400).send('Missing serverUrl or id');
+    }
+
+    try {
+      const baseUrl = (serverUrl as string).replace(/\/$/, '');
+      const fullUrl = `${baseUrl}/api/v2/audio/${id}`;
+
+      console.log(`[BirdNET Proxy] Fetching audio from: ${fullUrl}`);
+
+      const audioResp = await fetch(fullUrl);
+      if (!audioResp.ok) {
+        // Fallback to media/audio?id= format
+        const fallbackUrl = `${baseUrl}/api/v2/media/audio?id=${id}`;
+        console.log(`[BirdNET Proxy] Retrying with fallback: ${fallbackUrl}`);
+        const fallbackResp = await fetch(fallbackUrl);
+
+        if (!fallbackResp.ok) {
+          return res.status(audioResp.status).send('Audio clip not found on BirdNET host');
+        }
+
+        const contentType = fallbackResp.headers.get('content-type') || 'audio/wav';
+        res.setHeader('Content-Type', contentType);
+        const arrayBuffer = await fallbackResp.arrayBuffer();
+        return res.send(Buffer.from(arrayBuffer));
+      }
+
+      const contentType = audioResp.headers.get('content-type') || 'audio/wav';
+      res.setHeader('Content-Type', contentType);
+
+      const arrayBuffer = await audioResp.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    } catch (err: any) {
+      console.error('BirdNET audio proxy error:', err);
+      res.status(502).send('Error proxying bird audio clip');
+    }
+  });
+
+  // Proxy BirdNET Live RTSP Audio stream using FFmpeg (transcodes to MP3 for browser)
+  app.get('/api/birds/proxy/live-audio', (req, res) => {
+    const { url } = req.query;
+    if (!url) return res.status(400).send('Missing RTSP URL');
+
+    console.log(`[BirdNET Proxy] Initializing live audio relay for: ${url}`);
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Transfer-Encoding', 'chunked');
+
+    // Use FFmpeg to grab RTSP audio and pipe it as MP3 to the browser
+    const ffmpeg = spawn('ffmpeg', [
+      '-i', url as string,
+      '-vn',                   // No video
+      '-acodec', 'libmp3lame', // Encode to MP3
+      '-ab', '128k',           // Bitrate
+      '-f', 'mp3',             // Format
+      'pipe:1'                 // Output to stdout
+    ]);
+
+    ffmpeg.stdout.pipe(res);
+
+    ffmpeg.stderr.on('data', (data) => {
+      // For debugging: console.log(`[FFmpeg] ${data}`);
+    });
+
+    ffmpeg.on('error', (err) => {
+      console.error('[BirdNET Proxy] FFmpeg error:', err);
+      if (!res.headersSent) res.status(500).send('FFmpeg not installed or failed');
+    });
+
+    req.on('close', () => {
+      console.log('[BirdNET Proxy] Client disconnected, killing FFmpeg relay');
+      ffmpeg.kill('SIGKILL');
+    });
   });
 
   app.get('/api/notifications/settings', (_req, res) => {

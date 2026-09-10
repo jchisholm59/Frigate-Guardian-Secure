@@ -52,9 +52,8 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
       if (audioRef.current) {
         audioRef.current.load();
         audioRef.current.play().catch(err => console.warn('[Birds] Live playback blocked:', err));
+        setupAnalyzer();
       }
-
-      setupAnalyzer();
     } else {
       console.log('[Birds] Deactivating Live Yard Sentinel.');
       if (audioRef.current) {
@@ -391,19 +390,32 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
 
   const toggleAudio = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!audioRef.current || !effectiveAudioUrl) return;
+
+    if (!audioRef.current || !effectiveAudioUrl) {
+      console.warn('[Birds] Audio clip unavailable or source missing');
+      return;
+    }
+
+    console.log(`[Birds] Toggling audio for: ${sighting.commonName}. URL: ${effectiveAudioUrl}`);
 
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
+      // Force a full reload to ensure the proxy is hit and headers re-evaluated
       audioRef.current.load();
       const playPromise = audioRef.current.play();
+
       if (playPromise !== undefined) {
-        playPromise.then(() => setIsPlaying(true)).catch(err => {
-          console.error('[Birds] Audio clip playback failed:', err);
-          setIsPlaying(false);
-        });
+        playPromise
+          .then(() => {
+            console.log('[Birds] Playback started');
+            setIsPlaying(true);
+          })
+          .catch(err => {
+            console.error('[Birds] Audio playback blocked or failed:', err);
+            setIsPlaying(false);
+          });
       }
     }
   };

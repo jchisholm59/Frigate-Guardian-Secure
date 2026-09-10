@@ -288,20 +288,23 @@ async function startServer() {
 
             console.log(`[BirdNET DEBUG] Raw Payload: ${strPayload}`);
 
-            let imageUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(commonName)}`;
+            // Priority 1: Use the high-quality image URL from AviCommons provided in the payload
+            // Priority 2: Try to fetch a real thumbnail from Wikipedia
+            let imageUrl = payload.BirdImage?.URL || `https://en.wikipedia.org/wiki/${encodeURIComponent(commonName)}`;
 
-            // Try to fetch a real thumbnail from Wikipedia
-            try {
-              const wikiApiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(commonName)}`;
-              const wikiResp = await fetch(wikiApiUrl);
-              if (wikiResp.ok) {
-                const wikiData = await wikiResp.json();
-                if (wikiData.thumbnail?.source) {
-                  imageUrl = wikiData.thumbnail.source;
+            if (!payload.BirdImage?.URL) {
+              try {
+                const wikiApiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(commonName)}`;
+                const wikiResp = await fetch(wikiApiUrl);
+                if (wikiResp.ok) {
+                  const wikiData = await wikiResp.json();
+                  if (wikiData.thumbnail?.source) {
+                    imageUrl = wikiData.thumbnail.source;
+                  }
                 }
+              } catch (e) {
+                // Fallback to wiki link if API fails
               }
-            } catch (e) {
-              // Fallback to link if API fails
             }
 
             const sighting = {
@@ -310,7 +313,7 @@ async function startServer() {
               scientificName: payload.scientificName || payload.ScientificName,
               confidence: payload.confidence || payload.Confidence || 0,
               timestamp: Date.now(),
-              sourceNode: payload.SourceNode || 'BirdNET-Go',
+              sourceNode: payload.sourceName || payload.SourceNode || 'BirdNET-Go',
               imageUrl: imageUrl,
               wikiUrl: `https://en.wikipedia.org/wiki/${encodeURIComponent(commonName)}`,
               audioUrl: config.serverUrl && detectionId

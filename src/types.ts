@@ -217,6 +217,8 @@ export interface BirdSighting {
   sourceNode: string;
   imageUrl?: string;
   audioUrl?: string;
+  wikiUrl?: string;
+  funFact?: string;
   isAiAnalyzed?: boolean;
 }
 

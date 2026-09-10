@@ -382,6 +382,8 @@ export const BirdSightingsView: React.FC<{ sightings: BirdSighting[]; config?: B
 
 const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }> = ({ sighting, serverUrl }) => {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [localFact, setLocalFact] = useState<string | undefined>(sighting.funFact);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Logic to determine the best audio source
@@ -394,42 +396,37 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
     e.stopPropagation();
 
     console.log('[Birds] Playback Event Triggered');
-    console.log('[Birds] Sighting ID:', sighting.id);
-    console.log('[Birds] Sighting commonName:', sighting.commonName);
-    console.log('[Birds] Context serverUrl:', serverUrl);
-    console.log('[Birds] Resulting effectiveUrl:', effectiveAudioUrl);
-
-    if (!audioRef.current) {
-      console.error('[Birds] Audio element reference is missing!');
-      return;
-    }
-
-    if (!effectiveAudioUrl) {
-      console.warn('[Birds] Audio playback cancelled: No URL could be determined. Ensure BirdNET Web URL is set in settings.');
-      return;
-    }
+    if (!audioRef.current || !effectiveAudioUrl) return;
 
     if (isPlaying) {
-      console.log('[Birds] Pausing playback');
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      console.log('[Birds] Loading and playing:', effectiveAudioUrl);
-      // Force a full reload to ensure the proxy is hit and headers re-evaluated
       audioRef.current.load();
-      const playPromise = audioRef.current.play();
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+    }
+  };
 
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            console.log('[Birds] Playback started successfully');
-            setIsPlaying(true);
-          })
-          .catch(err => {
-            console.error('[Birds] Playback failed/blocked:', err);
-            setIsPlaying(false);
-          });
+  const handleRefreshAiFact = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isAiLoading) return;
+
+    setIsAiLoading(true);
+    try {
+      const resp = await fetch('/api/birds/ai-fact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ species: sighting.commonName }),
+      });
+      const data = await resp.json();
+      if (data.success && data.fact) {
+        setLocalFact(data.fact);
       }
+    } catch (err) {
+      console.error('[Bird AI] Failed to fetch fact:', err);
+    } finally {
+      setIsAiLoading(false);
     }
   };
 
@@ -460,10 +457,31 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
       </div>
 
       <div className="p-5 flex-1 flex flex-col gap-4">
-        <div>
-          <h3 className="text-base font-black text-white uppercase tracking-tight leading-tight group-hover:text-blue-400 transition-colors line-clamp-1">{sighting.commonName}</h3>
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1 line-clamp-1">{sighting.scientificName}</p>
+        <div className="flex justify-between items-start">
+          <div className="flex-1">
+            <h3 className="text-base font-black text-white uppercase tracking-tight leading-tight group-hover:text-blue-400 transition-colors line-clamp-1">{sighting.commonName}</h3>
+            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1 line-clamp-1">{sighting.scientificName}</p>
+          </div>
+          <button
+            onClick={handleRefreshAiFact}
+            disabled={isAiLoading}
+            className={`p-1.5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors ${isAiLoading ? 'animate-spin' : ''}`}
+            title="Refresh AI Bird Intelligence"
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${localFact ? 'text-amber-400' : 'text-slate-500'}`} />
+          </button>
         </div>
+
+        {/* Fun Fact Section */}
+        {localFact && (
+          <div className="px-3 py-2 rounded-xl bg-amber-950/20 border border-amber-500/20 text-[10px] text-amber-200/80 leading-relaxed italic animate-in fade-in slide-in-from-top-1 duration-300">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+              <span className="font-black uppercase tracking-[0.1em] text-[8px] text-amber-500">AI Intelligence</span>
+            </div>
+            {localFact}
+          </div>
+        )}
 
         <div className="flex flex-col gap-2 mt-auto">
           {effectiveAudioUrl ? (

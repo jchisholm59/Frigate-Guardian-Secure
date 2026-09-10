@@ -115,6 +115,7 @@ let persistentSettings: any = {
 };
 
 let birdSightings: any[] = [];
+let speciesFactCache: Record<string, string> = {};
 
 // Load settings on startup
 try {
@@ -307,6 +308,27 @@ async function startServer() {
               }
             }
 
+            // --- AUTOMATIC AI BIRD FACT ---
+            let funFact = speciesFactCache[commonName];
+            if (!funFact && persistentSettings.birdnet?.enabled) {
+              // Fetch from Gemini automatically for new species
+              try {
+                const ai = getAiClient();
+                if (ai) {
+                  const prompt = `You are an expert ornithologist. Give me one single, very interesting, tactically relevant behavioral fact about the ${commonName}. Keep it under 20 words. No intro.`;
+                  const result = await ai.models.generateContent({
+                    model: 'gemini-1.5-flash',
+                    contents: prompt,
+                  });
+                  funFact = result.text.trim();
+                  speciesFactCache[commonName] = funFact;
+                  console.log(`[Bird AI] Auto-generated fact for ${commonName}`);
+                }
+              } catch (err) {
+                console.warn(`[Bird AI] Auto-fact failed:`, err);
+              }
+            }
+
             const sighting = {
               id: detectionId || `bird-${Date.now()}`,
               commonName: commonName,
@@ -316,6 +338,8 @@ async function startServer() {
               sourceNode: payload.sourceName || payload.SourceNode || 'BirdNET-Go',
               imageUrl: imageUrl,
               wikiUrl: `https://en.wikipedia.org/wiki/${encodeURIComponent(commonName)}`,
+              funFact: funFact,
+              isAiAnalyzed: Boolean(funFact),
               audioUrl: config.serverUrl && detectionId
                 ? `/api/birds/proxy/audio/${detectionId}?serverUrl=${encodeURIComponent(config.serverUrl)}`
                 : undefined
@@ -382,6 +406,40 @@ async function startServer() {
 
   app.get('/api/birds/status', (_req, res) => {
     res.json({ success: true, status: birdMqttStatus, config: persistentSettings.birdnet });
+  });
+
+  // On-demand AI Bird Fact
+  app.post('/api/birds/ai-fact', async (req, res) => {
+    const { species } = req.body;
+    if (!species) return res.status(400).send('Missing species name');
+
+    try {
+      const ai = getAiClient();
+      if (!ai) return res.status(503).send('AI Service Unavailable');
+
+      const prompt = `You are an expert ornithologist. Give me one single, very interesting, tactically relevant behavioral fact about the ${species}. Keep it under 20 words. No intro.`;
+      const result = await ai.models.generateContent({
+        model: 'gemini-1.5-flash',
+        contents: prompt,
+      });
+
+      const fact = result.text.trim();
+      speciesFactCache[species] = fact;
+
+      // Update all existing sightings of this species with the new fact
+      birdSightings.forEach(s => {
+        if (s.commonName === species) {
+          s.funFact = fact;
+          s.isAiAnalyzed = true;
+        }
+      });
+      saveBirdSightings();
+
+      res.json({ success: true, fact });
+    } catch (err: any) {
+      console.error('[Bird AI] Error:', err);
+      res.status(500).send(err.message);
+    }
   });
 
   // Proxy BirdNET audio clips

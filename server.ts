@@ -116,6 +116,8 @@ let persistentSettings: any = {
 
 let birdSightings: any[] = [];
 let speciesFactCache: Record<string, string> = {};
+let dailyAlertedSpecies = new Set<string>();
+let lastBirdAlertReset = new Date().getUTCDate();
 
 // Load settings on startup
 try {
@@ -351,6 +353,48 @@ async function startServer() {
 
             broadcastToSse({ type: 'bird_sighting', sighting });
             console.log(`[BirdNET] Heard: ${sighting.commonName} (${Math.round(sighting.confidence * 100)}%)`);
+
+            // --- DAILY FIRST DETECTION ALERTS ---
+            const today = new Date().getUTCDate();
+            if (lastBirdAlertReset !== today) {
+              dailyAlertedSpecies.clear();
+              lastBirdAlertReset = today;
+              console.log('[Bird AI] Daily alert tracking reset for new day');
+            }
+
+            if (!dailyAlertedSpecies.has(commonName) && sighting.confidence > 0.6) {
+              dailyAlertedSpecies.add(commonName);
+
+              const isGmail = persistentSettings.gmail?.enabled;
+              const isSlack = persistentSettings.slack?.enabled;
+              const isDiscord = persistentSettings.discord?.enabled;
+
+              if (isGmail || isSlack || isDiscord) {
+                console.log(`[Bird AI] First detection today for ${commonName}. Dispatching alerts...`);
+
+                // Construct a "Bird Event" for the notification engine
+                const birdEvent = {
+                  id: sighting.id,
+                  camera: sighting.sourceNode,
+                  label: commonName,
+                  score: sighting.confidence,
+                  startTime: sighting.timestamp,
+                  duration: 3,
+                  zones: ['Aerial / Yard'],
+                  importance: 'detection' as const,
+                  threatLevel: 'low' as const,
+                  summary: `New Species Sighted: ${commonName}. ${funFact || ''}`,
+                  recommendedAction: 'View bird in Yard Intelligence tab.',
+                  box: { x: 0, y: 0, width: 1, height: 1 },
+                  snapshotUrl: sighting.imageUrl, // Use the high-res bird photo as the "snapshot"
+                  clipUrl: sighting.audioUrl,
+                };
+
+                dispatchNotification(birdEvent, persistentSettings).catch(err => {
+                  console.error(`[Bird Alert] Failed to dispatch: ${err.message}`);
+                });
+              }
+            }
           }
         } catch (err) {
           console.error('[BirdNET] Failed to parse message:', err);

@@ -443,6 +443,7 @@ async function startServer() {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('Transfer-Encoding', 'chunked');
     res.setHeader('Cache-Control', 'no-cache, no-store');
+    res.setHeader('Access-Control-Allow-Origin', '*'); // Allow browser to stream via proxy
 
     // Use FFmpeg to grab RTSP audio and pipe it as MP3 to the browser
     // Added -loglevel debug for troubleshooting in PM2 logs

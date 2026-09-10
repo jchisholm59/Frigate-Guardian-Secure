@@ -36,11 +36,10 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
   }, [isListening, proxyUrl]);
 
   const toggleListening = () => {
-    const nextMuted = !isListening;
-    setIsMuted(nextMuted);
+    if (isListening) {
+      // START LISTENING
+      setIsMuted(false);
 
-    if (!nextMuted) {
-      // Start audio context if needed
       if (!audioContextRef.current) {
         const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
         audioContextRef.current = new AudioContextClass();
@@ -50,8 +49,18 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
         audioContextRef.current.resume();
       }
 
+      if (audioRef.current) {
+        audioRef.current.load(); // Force fresh stream connection
+        audioRef.current.play().catch(err => console.warn('[Birds] Playback blocked:', err));
+      }
+
       setupAnalyzer();
     } else {
+      // STOP LISTENING
+      setIsMuted(true);
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     }
   };

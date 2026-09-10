@@ -153,8 +153,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="p-3 sm:p-4 bg-slate-900/60 border border-slate-800 rounded-2xl">
               <p className="text-[10px] font-black uppercase tracking-[0.25em] text-slate-500 mb-0.5">Storage</p>
               <p className="text-lg sm:text-xl font-mono font-bold text-white">
-                {Math.round((telemetry.storage.recordingsUsedGb / telemetry.storage.recordingsTotalGb) * 100)}%{' '}
-                <span className="text-xs text-slate-400 font-sans font-bold">/ {telemetry.storage.recordingsTotalGb}GB</span>
+                {telemetry?.storage?.recordingsTotalGb ? Math.round(((telemetry.storage.recordingsUsedGb || 0) / telemetry.storage.recordingsTotalGb) * 100) : 0}%{' '}
+                <span className="text-xs text-slate-400 font-sans font-bold">/ {telemetry?.storage?.recordingsTotalGb || 0}GB</span>
               </p>
             </div>
             <div className="hidden xl:block p-3 sm:p-4 bg-slate-900/60 border border-slate-800 rounded-2xl">

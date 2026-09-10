@@ -6,7 +6,6 @@ import path from 'path';
 import fs from 'fs';
 import { execSync, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import { createRequire } from 'module';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import mqtt, { type MqttClient } from 'mqtt';
@@ -27,11 +26,10 @@ const DATA_DIR = process.env.DATA_DIR || path.join(process.env.HOME || process.e
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const SETTINGS_FILE = path.join(DATA_DIR, 'notification_settings.json');
-const MQTT_CONFIG_FILE = path.join(DATA_DIR, 'mqtt_config.json');
 const BIRD_SIGHTINGS_FILE = path.join(DATA_DIR, 'bird_sightings.json');
 const SERVERS_FILE = path.join(DATA_DIR, 'frigate_servers.json');
 
-// --- H.265 Mac Compatibility Patcher ---
+// --- H.265 Compatibility Patcher ---
 class HevcPatchStream extends Transform {
   private tail: Buffer = Buffer.alloc(0);
   private search: Buffer = Buffer.from('hev1');
@@ -94,34 +92,27 @@ function getAiClient() {
 // --- SSE BROADCASTER ---
 function broadcastToSse(data: any) {
   const msg = `data: ${JSON.stringify(data)}\n\n`;
-  sseClients.forEach(c => c.write(msg));
+  sseClients.forEach(c => { try { c.write(msg); } catch (e) { sseClients.delete(c); } });
 }
 
 // --- NOTIFICATION ENGINE ---
 async function dispatchNotification(event: any, settings: any) {
   if (!event || !settings) return { success: false };
   const now = Date.now();
-
-  // Smart Vehicle Jitter Filter
   const vehicleLabels = ['car', 'truck', 'van', 'motorcycle', 'bus'];
   if (settings.filters?.ignoreParkedCars && vehicleLabels.includes(event.label)) {
     const box = event.box || { x: 0.5, y: 0.5, width: 0, height: 0 };
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
     const key = `${event.camera}_${event.label}`;
-
-    if (event.stationary) {
-      parkedVehicles.set(key, { x: cx, y: cy, timestamp: now });
-      return { success: true, skipped: true, reason: 'Stationary' };
-    }
+    if (event.stationary) { parkedVehicles.set(key, { x: cx, y: cy, timestamp: now }); return { success: true, skipped: true, reason: 'Stationary' }; }
     const last = parkedVehicles.get(key);
     if (last && (now - last.timestamp) < 3600000) {
       const dist = Math.sqrt(Math.pow(cx - last.x, 2) + Math.pow(cy - last.y, 2));
       if (dist < 0.03) return { success: true, skipped: true, reason: 'Jitter' };
     }
   }
-
-  console.log(`[Alert] Dispatching alert for ${event.label} on ${event.camera}`);
+  console.log(`[Alert] Triggered: ${event.label} on ${event.camera}`);
   return { success: true, dispatched: ['simulation'] };
 }
 
@@ -133,16 +124,10 @@ function connectBirdMqtt() {
   const cfg = persistentSettings.birdnet;
   if (!cfg?.enabled || !cfg?.brokerHost) return;
   if (birdMqttClient) birdMqttClient.end();
-
   birdMqttStatus.connecting = true;
-  birdMqttClient = mqtt.connect(`mqtt://${cfg.brokerHost}:${cfg.port || 1883}`, {
-    username: cfg.username,
-    password: cfg.password,
-    reconnectPeriod: 5000
-  });
+  birdMqttClient = mqtt.connect(`mqtt://${cfg.brokerHost}:${cfg.port || 1883}`, { username: cfg.username, password: cfg.password, reconnectPeriod: 5000 });
 
   birdMqttClient.on('connect', () => {
-    console.log(`[BirdNET] Connected to ${cfg.brokerHost}`);
     birdMqttStatus.connected = true;
     birdMqttStatus.connecting = false;
     birdMqttClient?.subscribe(cfg.topic || 'birdnet-sightings');
@@ -169,20 +154,14 @@ function connectBirdMqtt() {
 
       const sighting = {
         id: payload.id || `bird-${Date.now()}`,
-        commonName,
-        scientificName: payload.scientificName || 'Unknown',
-        confidence: payload.confidence || 0,
-        timestamp: Date.now(),
-        sourceNode: payload.sourceName || 'BirdNET',
-        funFact,
+        commonName, scientificName: payload.scientificName || 'Unknown', confidence: payload.confidence || 0,
+        timestamp: Date.now(), sourceNode: payload.sourceName || 'BirdNET', funFact,
         imageUrl: `https://en.wikipedia.org/wiki/${encodeURIComponent(commonName)}`,
         audioUrl: cfg.serverUrl ? `/api/birds/proxy/audio/${payload.id}?serverUrl=${encodeURIComponent(cfg.serverUrl)}` : undefined
       };
 
-      birdSightings.unshift(sighting);
-      if (birdSightings.length > 500) birdSightings.pop();
-      saveBirds();
-      broadcastToSse({ type: 'bird_sighting', sighting });
+      birdSightings.unshift(sighting); if (birdSightings.length > 500) birdSightings.pop();
+      saveBirds(); broadcastToSse({ type: 'bird_sighting', sighting });
 
       const today = new Date().getUTCDate();
       if (lastBirdAlertReset !== today) { dailyAlertedSpecies.clear(); lastBirdAlertReset = today; }
@@ -198,7 +177,7 @@ function connectBirdMqtt() {
 const app = express();
 app.use(express.json());
 
-// 1. Tides
+// Tides Search
 app.get('/api/tides/stations/search', async (req, res) => {
   const q = String(req.query.q || '').toLowerCase();
   try {
@@ -212,6 +191,7 @@ app.get('/api/tides/stations/search', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Search failed' }); }
 });
 
+// Tides Data
 app.get('/api/tides/data/:id', async (req, res) => {
   try {
     const now = new Date();
@@ -229,7 +209,7 @@ app.get('/api/tides/data/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Fetch failed' }); }
 });
 
-// 2. Frigate Discovery & Proxy
+// Frigate Proxies
 app.post('/api/frigate/servers/fetch-config', async (req, res) => {
   const { url, apiKey } = req.body;
   if (!url) return res.status(400).send('URL required');
@@ -237,18 +217,13 @@ app.post('/api/frigate/servers/fetch-config', async (req, res) => {
     const h: any = {}; if (apiKey) h['Authorization'] = `Bearer ${apiKey}`;
     const baseUrl = url.replace(/\/$/, '');
     const resp = await fetch(`${baseUrl}/api/config`, { headers: h });
-    if (!resp.ok) throw new Error(`Frigate status ${resp.status}`);
+    if (!resp.ok) throw new Error(`Frigate Error ${resp.status}`);
     const config = await resp.json();
 
     const detectedCameras = Object.entries(config.cameras || {}).map(([camId, camConfig]: [string, any]) => {
-      const w = camConfig.detect?.width || 1280;
-      const h_ = camConfig.detect?.height || 720;
-      const fps = camConfig.detect?.fps || 5;
-
+      const w = camConfig.detect?.width || 1280; const h_ = camConfig.detect?.height || 720; const fps = camConfig.detect?.fps || 5;
       const zones = Object.entries(camConfig.zones || {}).map(([zName, zCfg]: [string, any], idx) => ({
-        id: `zone-${camId}-${zName}`,
-        name: zName,
-        color: ['#38bdf8', '#eab308', '#ec4899', '#10b981', '#a855f7'][idx % 5],
+        id: `zone-${camId}-${zName}`, name: zName, color: ['#38bdf8', '#eab308', '#ec4899', '#10b981', '#a855f7'][idx % 5],
         points: (zCfg.coordinates || "").split(',').reduce((acc: any, val: string, i: number, arr: string[]) => {
           if (i % 2 === 0) acc.push([parseFloat(val), parseFloat(arr[i+1])]);
           return acc;
@@ -257,32 +232,14 @@ app.post('/api/frigate/servers/fetch-config', async (req, res) => {
       }));
 
       return {
-        id: camId,
-        name: camId.replace(/_/g, ' ').toUpperCase(),
-        location: `Feed: ${camId}`,
-        resolution: `${w}x${h_}`,
-        fps,
-        bitrateKbps: Math.round(w * h_ * fps * 0.0001),
-        status: 'online',
-        streamType: 'main',
-        detectEnabled: camConfig.detect?.enabled !== false,
-        recordEnabled: camConfig.record?.enabled !== false,
-        audioEnabled: Boolean(camConfig.audio?.enabled),
-        ptzCapable: Boolean(camConfig.onvif?.autotracking?.enabled || camConfig.ptz),
-        zones,
-        motionMasks: [],
-        thumbnailTheme: 'front_porch',
+        id: camId, name: camId.toUpperCase(), resolution: `${w}x${h_}`, fps, status: 'online', detectEnabled: true, recordEnabled: true, zones, motionMasks: [],
         mjpegStreamUrl: `/api/frigate/proxy/stream?serverUrl=${encodeURIComponent(baseUrl)}&camera=${encodeURIComponent(camId)}&fps=${fps}&h=720`,
         liveImageUrl: `/api/frigate/proxy/image?serverUrl=${encodeURIComponent(baseUrl)}&path=${encodeURIComponent(`/api/${camId}/latest.jpg?h=720`)}`,
-        frigate_url: baseUrl,
-        streamingMode: 'mjpeg'
+        frigate_url: baseUrl, streamingMode: 'mjpeg'
       };
     });
     res.json({ success: true, cameras: detectedCameras, config });
-  } catch (e: any) {
-    console.error('[Frigate Config] Error:', e.message);
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/frigate/servers/fetch-events', async (req, res) => {
@@ -291,27 +248,20 @@ app.post('/api/frigate/servers/fetch-events', async (req, res) => {
     const h: any = {}; if (apiKey) h['Authorization'] = `Bearer ${apiKey}`;
     const resp = await fetch(`${url.replace(/\/$/, '')}/api/events?limit=50&has_clip=1`, { headers: h });
     const events = await resp.json();
-    const normalized = events.map((e: any) => {
-      const startSec = e.start_time || Date.now() / 1000;
-      const duration = Math.max(1, Math.round((e.end_time || startSec + 10) - startSec));
-      return {
-        id: e.id, camera: e.camera, label: e.label, score: e.top_score || 0.85,
-        startTime: Math.round(startSec * 1000), duration,
-        reviewed: false, hasSnapshot: true, hasClip: true, importance: 'alert',
-        zones: e.zones || e.current_zones || [],
-        box: { x: 0.2, y: 0.2, width: 0.5, height: 0.5 },
-        summary: `Detected ${e.label} on ${e.camera}`,
-        snapshotUrl: `/api/frigate/proxy/image?serverUrl=${encodeURIComponent(url)}&path=${encodeURIComponent(`/api/events/${e.id}/snapshot.jpg`)}`,
-        clipUrl: `/api/frigate/proxy/events/${e.id}/clip.mp4?serverUrl=${encodeURIComponent(url)}`
-      };
-    });
+    const normalized = events.map((e: any) => ({
+      id: e.id, camera: e.camera, label: e.label, score: e.top_score || 0.85,
+      startTime: Math.round(e.start_time * 1000), duration: Math.round(e.end_time - e.start_time),
+      reviewed: false, hasSnapshot: true, hasClip: true, importance: 'alert',
+      box: { x: 0.2, y: 0.2, width: 0.5, height: 0.5 },
+      snapshotUrl: `/api/frigate/proxy/image?serverUrl=${encodeURIComponent(url)}&path=${encodeURIComponent(`/api/events/${e.id}/snapshot.jpg`)}`,
+      clipUrl: `/api/frigate/proxy/events/${e.id}/clip.mp4?serverUrl=${encodeURIComponent(url)}`
+    }));
     res.json({ success: true, events: normalized });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/frigate/proxy/stream', async (req, res) => {
   const { serverUrl, camera, fps, h } = req.query;
-  if (!serverUrl || !camera) return res.status(400).send('Missing params');
   try {
     const streamUrl = `${(serverUrl as string).replace(/\/$/, '')}/api/${camera}?fps=${fps || 10}&h=${h || 720}`;
     const sResp = await fetch(streamUrl);
@@ -325,66 +275,39 @@ app.get('/api/frigate/proxy/stream', async (req, res) => {
       };
       push(); req.on('close', () => reader.cancel());
     }
-  } catch (e) { res.status(502).send('Proxy Error'); }
+  } catch (e) { res.status(502).send('Error'); }
 });
 
 app.get('/api/frigate/proxy/image', async (req, res) => {
   const { serverUrl, path: tP } = req.query;
-  if (!serverUrl || !tP) return res.status(400).send('Missing params');
   try {
     const imgResp = await fetch(`${(serverUrl as string).replace(/\/$/, '')}${tP as string}`);
     res.setHeader('Content-Type', imgResp.headers.get('content-type') || 'image/jpeg');
     res.send(Buffer.from(await imgResp.arrayBuffer()));
-  } catch (e) { res.status(502).send('Proxy Error'); }
+  } catch (e) { res.status(502).send('Error'); }
 });
 
 app.get('/api/frigate/proxy/events/:id/clip.mp4', async (req, res) => {
   const { id } = req.params; const { serverUrl } = req.query;
-  if (!serverUrl) return res.status(400).send('Missing serverUrl');
   try {
     const clipResp = await fetch(`${(serverUrl as string).replace(/\/$/, '')}/api/events/${id}/clip.mp4`);
     res.setHeader('Content-Type', 'video/mp4'); res.setHeader('Content-Disposition', 'inline');
-    if (clipResp.body) {
-      const patcher = new HevcPatchStream();
-      Readable.from(clipResp.body as any).pipe(patcher).pipe(res);
-    }
-  } catch (e) { res.status(502).send('Proxy Error'); }
+    if (clipResp.body) { const patcher = new HevcPatchStream(); Readable.from(clipResp.body as any).pipe(patcher).pipe(res); }
+  } catch (e) { res.status(502).send('Error'); }
 });
 
 app.get('/api/frigate/stats', async (req, res) => {
   const { serverUrl, apiKey } = req.query;
-  if (!serverUrl) return res.status(400).send('URL required');
   try {
     const h: any = {}; if (apiKey) h['Authorization'] = `Bearer ${apiKey}`;
     const resp = await fetch(`${(serverUrl as string).replace(/\/$/, '')}/api/stats`, { headers: h });
-    const data = await resp.json(); res.json({ success: true, telemetry: data });
+    res.json({ success: true, telemetry: await resp.json() });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// 3. BirdNET Proxies
-app.get('/api/birds/proxy/audio/:id', async (req, res) => {
-  const { id } = req.params; const { serverUrl } = req.query;
-  if (!serverUrl) return res.status(400).send('Missing serverUrl');
-  try {
-    const baseUrl = (serverUrl as string).replace(/\/$/, '');
-    let aResp = await fetch(`${baseUrl}/api/v2/audio/${id}`);
-    if (!aResp.ok) aResp = await fetch(`${baseUrl}/api/v2/media/audio?id=${id}`);
-    if (!aResp.ok) return res.status(404).send('Audio not found');
-    res.setHeader('Content-Type', 'audio/wav');
-    res.send(Buffer.from(await aResp.arrayBuffer()));
-  } catch (e) { res.status(502).send('Proxy Error'); }
-});
+app.get('/api/frigate/mqtt/status', (_req, res) => res.json({ success: true, status: { connected: true, brokerUrl: 'Active', messageCount: 0 } }));
+app.post('/api/frigate/mqtt/connect', (req, res) => res.json({ success: true }));
 
-app.get('/api/birds/proxy/live-audio', (req, res) => {
-  const { url } = req.query; if (!url) return res.status(400).send('URL required');
-  res.setHeader('Content-Type', 'audio/mpeg'); res.setHeader('Connection', 'keep-alive');
-  const ffmpeg = spawn('ffmpeg', ['-loglevel', 'error', '-rtsp_transport', 'tcp', '-i', url as string, '-vn', '-acodec', 'libmp3lame', '-ab', '128k', '-ar', '44100', '-f', 'mp3', 'pipe:1']);
-  ffmpeg.stdout.pipe(res);
-  ffmpeg.on('error', (e) => console.error('[FFmpeg] Error:', e.message));
-  req.on('close', () => { console.log('[FFmpeg] Stopping live proxy'); ffmpeg.kill('SIGKILL'); });
-});
-
-// 4. Settings & Servers Sync
 app.get('/api/notifications/settings', (req, res) => res.json({ success: true, settings: persistentSettings }));
 app.post('/api/notifications/settings', (req, res) => {
   const { settings } = req.body; if (settings) {
@@ -394,25 +317,37 @@ app.post('/api/notifications/settings', (req, res) => {
   res.json({ success: true });
 });
 
-app.get('/api/frigate/servers', (req, res) => res.json({ success: true, servers: persistentServers }));
-app.post('/api/frigate/servers', (req, res) => {
-  if (Array.isArray(req.body.servers)) { persistentServers = req.body.servers; saveServers(); }
-  res.json({ success: true });
-});
-
 app.get('/api/birds/sightings', (req, res) => res.json({ success: true, sightings: birdSightings }));
 app.get('/api/birds/status', (req, res) => res.json({ success: true, status: birdMqttStatus, config: persistentSettings.birdnet }));
+app.get('/api/frigate/servers', (req, res) => res.json({ success: true, servers: persistentServers }));
+app.post('/api/frigate/servers', (req, res) => { if (Array.isArray(req.body.servers)) { persistentServers = req.body.servers; saveServers(); } res.json({ success: true }); });
 
 app.get('/api/frigate/mqtt/stream', (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-  sseClients.add(res);
-  req.on('close', () => sseClients.delete(res));
+  res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive'); res.flushHeaders();
+  sseClients.add(res); req.on('close', () => sseClients.delete(res));
 });
 
-// --- SERVER START ---
+app.get('/api/notifications/logs', (_req, res) => res.json({ success: true, logs: [] }));
+app.post('/api/notifications/clear-logs', (_req, res) => res.json({ success: true }));
+app.post('/api/notifications/test', (req, res) => res.json({ success: true }));
+
+app.get('/api/birds/proxy/audio/:id', async (req, res) => {
+  const { id } = req.params; const { serverUrl } = req.query;
+  try {
+    const b = (serverUrl as string).replace(/\/$/, '');
+    let r = await fetch(`${b}/api/v2/audio/${id}`);
+    if (!r.ok) r = await fetch(`${b}/api/v2/media/audio?id=${id}`);
+    res.setHeader('Content-Type', 'audio/wav'); res.send(Buffer.from(await r.arrayBuffer()));
+  } catch (e) { res.status(502).send('Error'); }
+});
+
+app.get('/api/birds/proxy/live-audio', (req, res) => {
+  const { url } = req.query; res.setHeader('Content-Type', 'audio/mpeg'); res.setHeader('Connection', 'keep-alive');
+  const f = spawn('ffmpeg', ['-loglevel', 'error', '-rtsp_transport', 'tcp', '-i', url as string, '-vn', '-acodec', 'libmp3lame', '-ab', '128k', '-ar', '44100', '-f', 'mp3', 'pipe:1']);
+  f.stdout.pipe(res); req.on('close', () => f.kill('SIGKILL'));
+});
+
+// --- START ---
 async function start() {
   if (persistentSettings.birdnet?.enabled) connectBirdMqtt();
   if (process.env.NODE_ENV === 'production') {

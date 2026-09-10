@@ -506,14 +506,3 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
   );
 };
 
-          <div className="flex items-center justify-between pt-2 border-t border-slate-800/50">
-            <span className="text-[8px] font-black text-slate-600 uppercase tracking-widest">via {sighting.sourceNode}</span>
-            <a href={`https://en.wikipedia.org/wiki/${encodeURIComponent(sighting.commonName)}`} target="_blank" rel="noreferrer" className="text-slate-500 hover:text-white transition-colors" title="Wikipedia">
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};

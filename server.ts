@@ -272,15 +272,10 @@ function connectToBirdMqtt() {
         const strPayload = messageBuffer.toString('utf-8');
         const payload = JSON.parse(strPayload);
 
-        // BirdNET-Go typically sends commonName, scientificName, confidence, etc.
         if (payload.commonName || payload.CommonName) {
           const commonName = payload.commonName || payload.CommonName;
           const detectionId = payload.detectionId || payload.id;
 
-          console.log(`[BirdNET DEBUG] Raw Payload: ${strPayload}`);
-
-          // Priority 1: Use the high-quality image URL from AviCommons provided in the payload
-          // Priority 2: Try to fetch a real thumbnail from Wikipedia
           let imageUrl = payload.BirdImage?.URL || `https://en.wikipedia.org/wiki/${encodeURIComponent(commonName)}`;
 
           if (!payload.BirdImage?.URL) {
@@ -293,15 +288,11 @@ function connectToBirdMqtt() {
                   imageUrl = wikiData.thumbnail.source;
                 }
               }
-            } catch (e) {
-              // Fallback to wiki link if API fails
-            }
+            } catch (e) {}
           }
 
-          // --- AUTOMATIC AI BIRD FACT ---
           let funFact = speciesFactCache[commonName];
           if (!funFact && persistentSettings.birdnet?.enabled) {
-            // Fetch from Gemini automatically for new species
             try {
               const ai = getAiClient();
               if (ai) {
@@ -342,25 +333,19 @@ function connectToBirdMqtt() {
           broadcastToSse({ type: 'bird_sighting', sighting });
           console.log(`[BirdNET] Heard: ${sighting.commonName} (${Math.round(sighting.confidence * 100)}%)`);
 
-          // --- DAILY FIRST DETECTION ALERTS ---
           const today = new Date().getUTCDate();
           if (lastBirdAlertReset !== today) {
             dailyAlertedSpecies.clear();
             lastBirdAlertReset = today;
-            console.log('[Bird AI] Daily alert tracking reset for new day');
           }
 
           if (!dailyAlertedSpecies.has(commonName) && sighting.confidence > 0.6 && persistentSettings.birdnet?.sendDailyAlerts) {
             dailyAlertedSpecies.add(commonName);
-
             const isGmail = persistentSettings.gmail?.enabled;
             const isSlack = persistentSettings.slack?.enabled;
             const isDiscord = persistentSettings.discord?.enabled;
 
             if (isGmail || isSlack || isDiscord) {
-              console.log(`[Bird AI] First detection today for ${commonName}. Dispatching alerts...`);
-
-              // Construct a "Bird Event" for the notification engine
               const birdEvent = {
                 id: sighting.id,
                 camera: sighting.sourceNode,
@@ -374,10 +359,9 @@ function connectToBirdMqtt() {
                 summary: `New Species Sighted: ${commonName}. ${funFact || ''}`,
                 recommendedAction: 'View bird in Yard Intelligence tab.',
                 box: { x: 0, y: 0, width: 1, height: 1 },
-                snapshotUrl: sighting.imageUrl, // Use the high-res bird photo as the "snapshot"
+                snapshotUrl: sighting.imageUrl,
                 clipUrl: sighting.audioUrl,
               };
-
               dispatchNotification(birdEvent, persistentSettings).catch(err => {
                 console.error(`[Bird Alert] Failed to dispatch: ${err.message}`);
               });
@@ -421,7 +405,6 @@ app.get('/api/tides/stations/search', async (req, res) => {
     const allStations = await resp.json();
     if (!Array.isArray(allStations)) throw new Error('DFO API returned non-array data');
 
-    // Perform robust case-insensitive search
     const filtered = allStations.filter(s => {
       if (!s) return false;
       const name = String(s.officialName || s.name || '').toLowerCase();
@@ -430,7 +413,6 @@ app.get('/api/tides/stations/search', async (req, res) => {
       return name.includes(searchTerm) || code.includes(searchTerm) || province.includes(searchTerm);
     }).slice(0, 15);
 
-    console.log(`[Tides] Found ${filtered.length} matches for "${searchTerm}"`);
     res.json({ success: true, stations: filtered });
   } catch (err: any) {
     console.error('[Tides] Search error:', err.message);
@@ -441,129 +423,73 @@ app.get('/api/tides/stations/search', async (req, res) => {
 // Get current and predicted data for a station
 app.get('/api/tides/data/:stationId', async (req, res) => {
   const { stationId } = req.params;
-
   try {
-    // Fetch 24 hours of predictions (wlp) and Hilo (wlp-hilo)
     const now = new Date();
-    const from = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString(); // 6 hours back
-    const to = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours forward
+    const from = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString();
+    const to = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
 
-    // Time series: wlp = water level prediction
     const seriesUrl = `https://api-iwls.dfo-mpo.gc.ca/api/v1/stations/${stationId}/data?timeSeriesCode=wlp&from=${from}&to=${to}`;
-    // High/Low: wlp-hilo
     const hiloUrl = `https://api-iwls.dfo-mpo.gc.ca/api/v1/stations/${stationId}/data?timeSeriesCode=wlp-hilo&from=${from}&to=${to}`;
 
-    const [seriesResp, hiloResp] = await Promise.all([
-      fetch(seriesUrl),
-      fetch(hiloUrl)
-    ]);
-
+    const [seriesResp, hiloResp] = await Promise.all([fetch(seriesUrl), fetch(hiloUrl)]);
     const [series, hilo] = await Promise.all([
       seriesResp.ok ? seriesResp.json() : Promise.resolve([]),
       hiloResp.ok ? hiloResp.json() : Promise.resolve([])
     ]);
 
-    console.log(`[Tides] Data fetch for ${stationId} complete. Predictions: ${series.length}, Hilo: ${hilo.length}`);
-
-    res.json({
-      success: true,
-      stationId,
-      predictions: series,
-      highLow: hilo
-    });
+    res.json({ success: true, stationId, predictions: series, highLow: hilo });
   } catch (err: any) {
     console.error('[Tides] Data fetch error:', err.message);
     res.status(500).send('Failed to fetch tidal data');
   }
 });
 
-// Get all Frigate servers
 app.get('/api/frigate/servers', (_req, res) => {
   res.json({ success: true, servers: persistentServers });
 });
 
-// Update all Frigate servers
 app.post('/api/frigate/servers', (req, res) => {
   const { servers } = req.body;
   if (Array.isArray(servers)) {
     persistentServers = servers;
     try {
       fs.writeFileSync(SERVERS_FILE, JSON.stringify(persistentServers, null, 2));
-      console.log(`[Servers] Updated servers list (${persistentServers.length} servers)`);
-    } catch (err) {
-      console.error('[Servers] Failed to save servers to disk:', err);
-    }
+    } catch (err) {}
   }
   res.json({ success: true, servers: persistentServers });
 });
 
-// Proxy BirdNET audio clips
 app.get('/api/birds/proxy/audio/:id', async (req, res) => {
   const { id } = req.params;
   const { serverUrl } = req.query;
-
-  if (!serverUrl || !id) {
-    return res.status(400).send('Missing serverUrl or id');
-  }
-
+  if (!serverUrl || !id) return res.status(400).send('Missing params');
   try {
-    const baseUrl = (serverUrl as string).replace(/\/$/, '');
-    const fullUrl = `${baseUrl}/api/v2/audio/${id}`;
-
-    console.log(`[BirdNET Proxy] Fetching audio from: ${fullUrl}`);
-
+    const fullUrl = `${(serverUrl as string).replace(/\/$/, '')}/api/v2/audio/${id}`;
     const audioResp = await fetch(fullUrl);
-
-    // Handle potential 404 or other errors by trying the fallback
     if (!audioResp.ok) {
-      const fallbackUrl = `${baseUrl}/api/v2/media/audio?id=${id}`;
-      console.log(`[BirdNET Proxy] Primary failed (${audioResp.status}). Retrying with fallback: ${fallbackUrl}`);
+      const fallbackUrl = `${(serverUrl as string).replace(/\/$/, '')}/api/v2/media/audio?id=${id}`;
       const fallbackResp = await fetch(fallbackUrl);
-
-      if (!fallbackResp.ok) {
-        console.error(`[BirdNET Proxy] All audio endpoints failed for ID: ${id}`);
-        return res.status(404).send('Audio clip not found on BirdNET host');
-      }
-
-      const contentType = fallbackResp.headers.get('content-type') || 'audio/wav';
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Access-Control-Allow-Origin', '*'); // Added CORS here too
-      const arrayBuffer = await fallbackResp.arrayBuffer();
-      return res.send(Buffer.from(arrayBuffer));
+      if (!fallbackResp.ok) return res.status(404).send('Not found');
+      res.setHeader('Content-Type', 'audio/wav');
+      return res.send(Buffer.from(await fallbackResp.arrayBuffer()));
     }
-
-    // Success with primary endpoint
-    const contentType = audioResp.headers.get('content-type') || 'audio/wav';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Access-Control-Allow-Origin', '*'); // Added CORS here too
-
-    const arrayBuffer = await audioResp.arrayBuffer();
-    res.send(Buffer.from(arrayBuffer));
+    res.setHeader('Content-Type', 'audio/wav');
+    res.send(Buffer.from(await audioResp.arrayBuffer()));
   } catch (err: any) {
-    console.error('[BirdNET Proxy] Critical proxy error:', err.message);
-    res.status(502).send('Error proxying bird audio clip');
+    res.status(502).send('Error');
   }
 });
 
-// Proxy BirdNET Live RTSP Audio stream using FFmpeg (transcoding for browser)
 app.get('/api/birds/proxy/live-audio', (req, res) => {
   const { url } = req.query;
-  if (!url) {
-    console.error('[BirdNET Proxy] Request received without RTSP URL');
-    return res.status(400).send('Missing RTSP URL');
-  }
-
+  if (!url) return res.status(400).send('Missing RTSP URL');
   const rtspUrl = url as string;
-  console.log(`[BirdNET Proxy] Initializing live audio relay for: ${rtspUrl}`);
-
-  // Standard headers for a streaming audio response
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('Transfer-Encoding', 'chunked');
   res.setHeader('Cache-Control', 'no-cache, no-store');
-  res.setHeader('Access-Control-Allow-Origin', '*'); // Allow browser to stream via proxy
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
-  let ffmpegStarted = false;
   const ffmpeg = spawn('ffmpeg', [
     '-loglevel', 'error',
     '-rtsp_transport', 'tcp',
@@ -577,132 +503,72 @@ app.get('/api/birds/proxy/live-audio', (req, res) => {
   ]);
 
   ffmpeg.stdout.pipe(res);
-
-  ffmpeg.stderr.on('data', (data) => {
-    const msg = data.toString();
-    console.log(`[BirdNET FFmpeg] ${msg.trim()}`);
-  });
-
-  ffmpeg.on('exit', (code) => {
-    console.log(`[BirdNET Proxy] FFmpeg process exited with code ${code}`);
-    if (!res.writableEnded) res.end();
-  });
-
-  ffmpeg.on('error', (err) => {
-    console.error('[BirdNET Proxy] FFmpeg spawn error:', err);
-    if (!res.headersSent) res.status(500).send('FFmpeg failed to start');
-  });
-
-  req.on('close', () => {
-    console.log('[BirdNET Proxy] Browser disconnected, stopping FFmpeg relay');
-    ffmpeg.kill('SIGKILL');
-  });
+  ffmpeg.on('exit', () => { if (!res.writableEnded) res.end(); });
+  ffmpeg.on('error', () => { if (!res.headersSent) res.status(500).send('FFmpeg failed'); });
+  req.on('close', () => { ffmpeg.kill('SIGKILL'); });
 });
 
 const app = express();
 app.use(express.json());
 
-// Proxy image to prevent CORS / Mixed Content issues (supports latest.jpg, snapshot.jpg, thumbnail.jpg)
 app.get('/api/frigate/proxy/image', async (req, res) => {
   const { serverUrl, path: targetPath } = req.query;
-  if (!serverUrl || !targetPath) {
-    return res.status(400).send('Missing serverUrl or path');
-  }
-
+  if (!serverUrl || !targetPath) return res.status(400).send('Missing params');
   try {
     const fullUrl = `${(serverUrl as string).replace(/\/$/, '')}${targetPath as string}`;
-    console.log(`[Image Proxy] Fetching image from: ${fullUrl}`);
     const imgResp = await fetch(fullUrl);
-    if (!imgResp.ok) {
-      return res.status(imgResp.status).send(`Failed to fetch image: ${imgResp.statusText}`);
-    }
-
-    const contentType = imgResp.headers.get('content-type') || 'image/jpeg';
-    res.setHeader('Content-Type', contentType);
-    const arrayBuffer = await imgResp.arrayBuffer();
-    res.send(Buffer.from(arrayBuffer));
+    if (!imgResp.ok) return res.status(imgResp.status).send('Failed');
+    res.setHeader('Content-Type', imgResp.headers.get('content-type') || 'image/jpeg');
+    res.send(Buffer.from(await imgResp.arrayBuffer()));
   } catch (err: any) {
-    console.error('[Image Proxy] Error:', err.message);
-    res.status(502).send('Error proxying image');
+    res.status(502).send('Error');
   }
 });
 
-// Proxy Frigate MJPEG stream with SSE-friendly headers
 app.get('/api/frigate/proxy/stream', async (req, res) => {
   const { serverUrl, camera, fps, h } = req.query;
-  if (!serverUrl || !camera) {
-    return res.status(400).send('Missing serverUrl or camera');
-  }
-
+  if (!serverUrl || !camera) return res.status(400).send('Missing params');
   try {
-    const baseUrl = (serverUrl as string).replace(/\/$/, '');
-    const streamUrl = `${baseUrl}/api/${camera}?fps=${fps || 10}&h=${h || 720}`;
-
-    console.log(`[Stream Proxy] Initializing MJPEG relay for: ${streamUrl}`);
-
+    const streamUrl = `${(serverUrl as string).replace(/\/$/, '')}/api/${camera}?fps=${fps || 10}&h=${h || 720}`;
     const streamResp = await fetch(streamUrl);
-    if (!streamResp.ok) {
-      return res.status(streamResp.status).send('Frigate stream unavailable');
-    }
-
-    const contentType = streamResp.headers.get('content-type') || 'multipart/x-mixed-replace; boundary=frame';
-    res.setHeader('Content-Type', contentType);
-
+    if (!streamResp.ok) return res.status(streamResp.status).send('Unavailable');
+    res.setHeader('Content-Type', streamResp.headers.get('content-type') || 'multipart/x-mixed-replace; boundary=frame');
     if (streamResp.body) {
       const reader = (streamResp.body as any).getReader();
       const push = async () => {
         const { done, value } = await reader.read();
-        if (done || req.destroyed) {
-          return;
-        }
+        if (done || req.destroyed) return;
         res.write(value);
         push();
       };
       push();
-
-      req.on('close', () => {
-        reader.cancel();
-      });
+      req.on('close', () => reader.cancel());
     }
   } catch (err: any) {
-    console.error('[Stream Proxy] Critical error:', err.message);
-    res.status(502).send('Error proxying stream');
+    res.status(502).send('Error');
   }
 });
 
-// Proxy event clips with H.265 fix for macOS/Safari
 app.get('/api/frigate/proxy/events/:id/clip.mp4', async (req, res) => {
   const { id } = req.params;
   const { serverUrl } = req.query;
   if (!serverUrl) return res.status(400).send('Missing serverUrl');
-
   try {
-    const baseUrl = (serverUrl as string).replace(/\/$/, '');
-    const clipUrl = `${baseUrl}/api/events/${id}/clip.mp4`;
-
-    console.log(`[Clip Proxy] Fetching clip: ${clipUrl}`);
+    const clipUrl = `${(serverUrl as string).replace(/\/$/, '')}/api/events/${id}/clip.mp4`;
     const clipResp = await fetch(clipUrl);
-    if (!clipResp.ok) return res.status(clipResp.status).send('Clip not found');
-
+    if (!clipResp.ok) return res.status(clipResp.status).send('Not found');
     res.setHeader('Content-Type', 'video/mp4');
-    // Ensure the browser doesn't try to download it, just play it
     res.setHeader('Content-Disposition', 'inline');
-
     if (clipResp.body) {
-      // Pipe through the HEVC patcher to convert 'hev1' to 'hvc1'
       const patcher = new HevcPatchStream();
       Readable.from(clipResp.body as any).pipe(patcher).pipe(res);
     }
   } catch (err: any) {
-    console.error('[Clip Proxy] Error:', err.message);
-    res.status(502).send('Error proxying clip');
+    res.status(502).send('Error');
   }
 });
 
-// Initialize BirdNET if enabled
-if (persistentSettings.birdnet?.enabled) {
-  connectToBirdMqtt();
-}
+if (persistentSettings.birdnet?.enabled) connectToBirdMqtt();
 
 app.post('/api/notifications/settings', (req, res) => {
   const { settings } = req.body;
@@ -710,13 +576,12 @@ app.post('/api/notifications/settings', (req, res) => {
     const birdnetChanged = JSON.stringify(persistentSettings.birdnet) !== JSON.stringify(settings.birdnet);
     persistentSettings = settings;
     savePersistentSettings();
-    console.log(`[Settings] Updated. Gmail Enabled: ${persistentSettings.gmail?.enabled}, Slack: ${persistentSettings.slack?.enabled}, Discord: ${persistentSettings.discord?.enabled}`);
-
-    if (birdnetChanged) {
-      console.log('[BirdNET] Settings changed, reconnecting...');
-      connectToBirdMqtt();
-    }
+    if (birdnetChanged) connectToBirdMqtt();
   }
+  res.json({ success: true, settings: persistentSettings });
+});
+
+app.get('/api/notifications/settings', (req, res) => {
   res.json({ success: true, settings: persistentSettings });
 });
 
@@ -811,15 +676,11 @@ app.get('/api/frigate/mqtt/stream', (req, res) => {
   res.write('data: {"type":"status","status":{"connected":true}}\n\n');
 });
 
-// Notification Engine Mock
 async function dispatchNotification(event: any, settings: any) {
-  console.log(`[Notification] Dispatching for ${event.label}`);
   return { success: true, dispatched: ['simulation'] };
 }
 
-function broadcastToSse(data: any) {
-  // Mock
-}
+function broadcastToSse(data: any) {}
 
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static('dist'));
@@ -827,14 +688,9 @@ if (process.env.NODE_ENV === 'production') {
     res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
   });
 } else {
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: 'spa'
-  });
+  const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
   app.use(vite.middlewares);
 }
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Frigate Guardian Active on port ${PORT}`);
-});
+app.listen(PORT, () => { console.log(`🚀 Frigate Guardian Active on port ${PORT}`); });

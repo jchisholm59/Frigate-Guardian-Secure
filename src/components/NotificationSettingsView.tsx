@@ -241,7 +241,9 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
 
   const availableLabels = [
     { id: 'person', label: 'Person', icon: '👤' },
-    { id: 'car', label: 'Vehicle / Car', icon: '🚗' },
+    { id: 'car', label: 'Car', icon: '🚗' },
+    { id: 'truck', label: 'Truck / Van', icon: '🚚' },
+    { id: 'motorcycle', label: 'Motorcycle', icon: '🏍️' },
     { id: 'package', label: 'Package', icon: '📦' },
     { id: 'dog', label: 'Dog', icon: '🐕' },
     { id: 'cat', label: 'Cat', icon: '🐈' },

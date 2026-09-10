@@ -123,6 +123,10 @@ let speciesFactCache: Record<string, string> = {};
 let dailyAlertedSpecies = new Set<string>();
 let lastBirdAlertReset = new Date().getUTCDate();
 
+// Track stationary vehicles to prevent "jitter" notifications
+// Map: camera_label -> { x, y, timestamp }
+const parkedVehicles = new Map<string, { x: number, y: number, timestamp: number }>();
+
 // Load settings on startup
 try {
   if (fs.existsSync(SETTINGS_FILE)) {
@@ -2226,13 +2230,42 @@ Return a JSON object with:
 
     const filters = settings.filters || { minImportance: 'all', minThreatLevel: 'all', targetLabels: [], selectedCameras: [], ignoreParkedCars: true };
 
-    // Intelligent Parked Car Filtering
-    if (filters.ignoreParkedCars && event.label === 'car' && event.stationary) {
-      recordNotificationLog({
-        channel: 'all', status: 'skipped', eventId: event.id, camera: event.camera, label: event.label,
-        message: `Skipped: Parked car detection (Stationary)`,
-      });
-      return { success: true, skipped: true, reason: 'Filtered out: stationary parked car' };
+    const vehicleLabels = ['car', 'truck', 'van', 'motorcycle', 'bus'];
+    const isVehicle = vehicleLabels.includes(event.label);
+
+    if (filters.ignoreParkedCars && isVehicle) {
+      const box = event.box || { x: 0, y: 0, width: 0, height: 0 };
+      const centerX = box.x + box.width / 2;
+      const centerY = box.y + box.height / 2;
+      const trackKey = `${event.camera}_${event.label}`;
+
+      // 1. Check if Frigate already says it's stationary
+      if (event.stationary) {
+        // Record its position for future "jitter" checks
+        parkedVehicles.set(trackKey, { x: centerX, y: centerY, timestamp: now });
+
+        recordNotificationLog({
+          channel: 'all', status: 'skipped', eventId: event.id, camera: event.camera, label: event.label,
+          message: `Skipped: Stationary ${event.label} (Parked)`,
+        });
+        return { success: true, skipped: true, reason: `Filtered out: stationary ${event.label}` };
+      }
+
+      // 2. "Smart Parked" Jitter Check: If it moved less than 3% since it was last parked, ignore it
+      const lastParked = parkedVehicles.get(trackKey);
+      if (lastParked && (now - lastParked.timestamp) < 3600000) { // Only check if last seen within 1 hour
+        const dist = Math.sqrt(Math.pow(centerX - lastParked.x, 2) + Math.pow(centerY - lastParked.y, 2));
+        if (dist < 0.03) { // 3% of frame move threshold
+          // Still update the timestamp so it stays "parked"
+          lastParked.timestamp = now;
+
+          recordNotificationLog({
+            channel: 'all', status: 'skipped', eventId: event.id, camera: event.camera, label: event.label,
+            message: `Skipped: ${event.label} jitter (Moved < 3% from parked position)`,
+          });
+          return { success: true, skipped: true, reason: `Filtered out: ${event.label} jitter near parked position` };
+        }
+      }
     }
 
     // Check importance filter

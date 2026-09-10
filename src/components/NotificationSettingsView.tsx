@@ -135,7 +135,7 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
       <div className="space-y-3">
         <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Your Monitoring Sites</h5>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {currentStations.map((s, idx) => {
+          {Array.isArray(currentStations) && currentStations.map((s, idx) => {
             if (!s) return null;
             return (
               <div key={s.id || `station-${idx}`} className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-800">
@@ -143,16 +143,13 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
                   <p className="text-xs font-black text-white uppercase">{s.name || s.officialName || 'Unknown Station'}</p>
                   <p className="text-[9px] font-mono text-cyan-500">{s.code || 'N/A'}</p>
                 </div>
-                <button
-                  onClick={() => removeStation(s.id)}
-                  className="px-2 py-1 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-all font-black text-[10px] border border-rose-500/20"
-                >
+                <button onClick={() => removeStation(s.id)} className="px-2 py-1 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-all font-black text-[10px] border border-rose-500/20">
                   DELETE
                 </button>
               </div>
             );
           })}
-          {currentStations.length === 0 && (
+          {(!Array.isArray(currentStations) || currentStations.length === 0) && (
             <p className="text-[10px] text-slate-600 italic py-2">No stations added. Use the search below.</p>
           )}
         </div>

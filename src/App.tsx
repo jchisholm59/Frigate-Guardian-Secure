@@ -31,7 +31,7 @@ const DEFAULT_SERVERS: FrigateServerConfig[] = [
     url: 'http://localhost:3000',
     isSimulated: true,
     status: 'connected',
-    mqtt: { enabled: true, brokerHost: '127.0.0.1', port: 1883 },
+    mqtt: { enabled: true, brokerHost: '127.0.0.1', port: 1883, protocol: 'mqtt', topicPrefix: 'frigate' },
   },
 ];
 
@@ -70,7 +70,7 @@ export default function App() {
   const [events, setEvents] = useState<FrigateEvent[]>(INITIAL_EVENTS);
   const [birdSightings, setBirdSightings] = useState<any[]>([]);
   const [telemetry, setTelemetry] = useState<SystemTelemetryData>(INITIAL_TELEMETRY);
-  const [mqttStatus, setMqttStatus] = useState<MqttStatusInfo>({ connected: false, brokerUrl: '', topicPrefix: 'frigate', messageCount: 0 });
+  const [mqttStatus, setMqttStatus] = useState<MqttStatusInfo>({ connected: false, brokerUrl: '', topicPrefix: 'frigate', messageCount: 0, lastReceivedAt: null, error: null });
 
   const [selectedCamera, setSelectedCamera] = useState<CameraStream | null>(null);
   const [isHostModalOpen, setIsHostModalOpen] = useState(false);
@@ -147,7 +147,7 @@ export default function App() {
 
         <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-8">
           <ErrorBoundary>
-            {activeTab === 'live' && <LiveGrid cameras={displayedCameras} telemetry={telemetry} onSelectCamera={setSelectedCamera} onToggleDetect={() => {}} onToggleRecord={() => {}} onResyncStreams={handleSync} onOpenHostModal={() => setIsHostModalOpen(true)} />}
+            {activeTab === 'live' && <LiveGrid cameras={displayedCameras} activeServerName={activeServer.name} telemetry={telemetry} onSelectCamera={setSelectedCamera} onToggleDetect={() => {}} onToggleRecord={() => {}} onResyncStreams={handleSync} onOpenHostModal={() => setIsHostModalOpen(true)} />}
             {activeTab === 'events' && <EventsReview events={validEvents} cameras={displayedCameras} onMarkReviewed={() => {}} onMarkAllReviewed={() => {}} onClearAllEvents={() => {}} onDeleteEvent={() => {}} onUpdateEventAiSummary={() => {}} onRefreshEvents={handleSync} isLiveServerConnected={!activeServer.isSimulated} />}
             {activeTab === 'birds' && <BirdSightingsView sightings={birdSightings} config={notificationSettings.birdnet} onRefresh={() => {}} onClear={() => setBirdSightings([])} />}
             {activeTab === 'tides' && <TideView config={notificationSettings.tides || { stations: [], refreshIntervalMinutes: 60 }} />}

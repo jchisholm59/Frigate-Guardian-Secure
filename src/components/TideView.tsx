@@ -48,6 +48,8 @@ export const TideView: React.FC<TideViewProps> = ({ config }) => {
   useEffect(() => {
     if (activeStation) {
       fetchTideData(activeStation.id);
+    } else {
+      setStationData(null);
     }
   }, [activeStation, fetchTideData]);
 
@@ -101,11 +103,11 @@ export const TideView: React.FC<TideViewProps> = ({ config }) => {
           <Info className="w-10 h-10 text-red-500 mx-auto mb-4" />
           <p className="text-sm font-bold text-red-400 uppercase">{error}</p>
         </div>
-      ) : stationData ? (
+      ) : (stationData && Array.isArray(stationData.predictions)) ? (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Main Chart Section */}
           <div className="xl:col-span-2 space-y-6">
-            <TideChart station={activeStation} data={stationData.predictions} highLow={stationData.highLow} />
+            <TideChart station={activeStation} data={stationData.predictions} highLow={stationData.highLow || []} />
 
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
               <div className="flex items-center gap-3 mb-6">

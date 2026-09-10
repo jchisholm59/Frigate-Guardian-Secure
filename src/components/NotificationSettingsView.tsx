@@ -22,6 +22,7 @@ import {
   Activity,
   Plus,
   Search,
+  Sparkles,
 } from 'lucide-react';
 import { NotificationSettings, NotificationLog, BirdNetConfig, TidalStationConfig, TidalStation } from '../types';
 

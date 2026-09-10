@@ -483,28 +483,30 @@ async function startServer() {
     if (!q) return res.status(400).send('Query parameter q is required');
 
     try {
-      const searchTerm = (q as string).toLowerCase();
+      const searchTerm = String(q).toLowerCase();
       console.log(`[Tides] Searching for: "${searchTerm}"`);
 
-      // We fetch a list of stations. DFO API is very literal with "name" or "code" parameters,
-      // so we'll fetch the full list (it's not too big) and filter it on our server to be helpful.
       const url = `https://api-iwls.dfo-mpo.gc.ca/api/v1/stations`;
       const resp = await fetch(url);
-      const allStations: any[] = await resp.json();
+      if (!resp.ok) throw new Error(`DFO API returned ${resp.status}`);
+
+      const allStations = await resp.json();
+      if (!Array.isArray(allStations)) throw new Error('DFO API returned non-array data');
 
       // Perform robust case-insensitive search
       const filtered = allStations.filter(s => {
-        const name = (s.officialName || s.name || '').toLowerCase();
-        const code = (s.code || '').toLowerCase();
-        const province = (s.provinceCode || '').toLowerCase();
+        if (!s) return false;
+        const name = String(s.officialName || s.name || '').toLowerCase();
+        const code = String(s.code || '').toLowerCase();
+        const province = String(s.provinceCode || s.province || '').toLowerCase();
         return name.includes(searchTerm) || code.includes(searchTerm) || province.includes(searchTerm);
-      }).slice(0, 15); // Return top 15 matches to keep UI clean
+      }).slice(0, 15);
 
       console.log(`[Tides] Found ${filtered.length} matches for "${searchTerm}"`);
       res.json({ success: true, stations: filtered });
     } catch (err: any) {
       console.error('[Tides] Search error:', err.message);
-      res.status(500).send('Failed to search tidal stations');
+      res.status(500).json({ error: 'Failed to search tidal stations' });
     }
   });
 

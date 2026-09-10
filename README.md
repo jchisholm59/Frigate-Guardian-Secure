@@ -31,6 +31,12 @@ Frigate Guardian is a comprehensive, real-time surveillance dashboard designed t
 *   **Instant YAML:** Automatically generate perfectly formatted YAML code to paste into your Frigate `config.yml`.
 *   **Stability First:** De-duplicated event list ensures you see a single, real-time row per detection instead of hundreds of updates.
 
+### 🐦 Bioacoustic Yard Intelligence (NEW)
+*   **BirdNET-Go Integration:** Real-time bird species identification via high-fidelity audio analysis.
+*   **Live Audio Sentinel:** Listen to your yard in real-time with a built-in frequency spectrogram.
+*   **Diversity Report:** Automatic population summary of all species visiting your property.
+*   **Audio Proof:** Play back specific bird song recordings directly from your yard history.
+
 ---
 
 ## 🛠 Installation & Setup
@@ -96,6 +102,16 @@ Docker will automatically create a volume to persist your settings:
   docker compose down -v
   docker compose up -d --build
   ```
+
+---
+
+## 🐦 BirdNET-Go Setup
+To enable bird song identification, go to **Notifications -> BirdNET-Go** in the dashboard:
+1.  **Enable Integration:** Toggle the switch to ON.
+2.  **MQTT Broker:** Provide the IP of the broker BirdNET-Go is publishing to.
+3.  **MQTT Topic:** Set to your sightings topic (default: `birdnet-sightings`).
+4.  **Web URL:** Enter your BirdNET-Go web interface address (e.g., `http://192.168.2.210:8080`) to enable audio clip playback.
+5.  **Live Audio:** Enter the RTSP URL of your yard microphone to enable the live spectrogram.
 
 ---
 

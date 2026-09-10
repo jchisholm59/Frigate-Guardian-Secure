@@ -18,6 +18,7 @@ import { LiveGrid } from './components/LiveGrid';
 import { EventsReview } from './components/EventsReview';
 import { ZoneEditor } from './components/ZoneEditor';
 import { BirdSightingsView } from './components/BirdSightingsView';
+import { TideView } from './components/TideView';
 import { ConfigStudio } from './components/ConfigStudio';
 import { SystemTelemetry } from './components/SystemTelemetry';
 import { CameraDetailModal } from './components/CameraDetailModal';
@@ -748,6 +749,10 @@ export default function App() {
               fetch('/api/birds/clear', { method: 'POST' }).then(() => setBirdSightings([]));
             }}
           />
+        )}
+
+        {activeTab === 'tides' && (
+          <TideView config={notificationSettings.tides || { stations: [], refreshIntervalMinutes: 60 }} />
         )}
 
         {activeTab === 'zones' && (

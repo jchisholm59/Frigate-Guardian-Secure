@@ -195,6 +195,7 @@ export interface NotificationSettings {
   discord: DiscordNotificationConfig;
   filters: NotificationFilterConfig;
   birdnet?: BirdNetConfig;
+  tides?: TidalStationConfig;
 }
 
 export interface BirdNetConfig {
@@ -235,7 +236,24 @@ export interface NotificationLog {
   details?: string;
 }
 
-export type ActiveTab = 'live' | 'events' | 'birds' | 'zones' | 'config' | 'system' | 'notifications';
+export type ActiveTab = 'live' | 'events' | 'birds' | 'tides' | 'zones' | 'config' | 'system' | 'notifications';
 
 export type AppTheme = 'midnight' | 'slate-grey';
+
+export interface TidalStation {
+  id: string; // Internal UUID
+  code: string; // 5-digit DFO code
+  name: string;
+  province: string;
+}
+
+export interface TidalDataPoint {
+  eventDate: string;
+  value: number;
+}
+
+export interface TidalStationConfig {
+  stations: TidalStation[];
+  refreshIntervalMinutes: number;
+}
 

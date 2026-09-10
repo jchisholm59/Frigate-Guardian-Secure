@@ -114,6 +114,10 @@ let persistentSettings: any = {
     username: '',
     password: '',
     sendDailyAlerts: false
+  },
+  tides: {
+    stations: [],
+    refreshIntervalMinutes: 60
   }
 };
 
@@ -469,6 +473,61 @@ async function startServer() {
 
   app.get('/api/birds/status', (_req, res) => {
     res.json({ success: true, status: birdMqttStatus, config: persistentSettings.birdnet });
+  });
+
+  // --- TIDAL DATA PROXIES (Fisheries and Oceans Canada API) ---
+
+  // Search for stations by name or code
+  app.get('/api/tides/stations/search', async (req, res) => {
+    const { q } = req.query;
+    if (!q) return res.status(400).send('Query parameter q is required');
+
+    try {
+      const url = `https://api-iwls.dfo-mpo.gc.ca/api/v1/stations?q=${encodeURIComponent(q as string)}`;
+      const resp = await fetch(url);
+      const data = await resp.json();
+      res.json({ success: true, stations: data });
+    } catch (err: any) {
+      console.error('[Tides] Search error:', err.message);
+      res.status(500).send('Failed to search tidal stations');
+    }
+  });
+
+  // Get current and predicted data for a station
+  app.get('/api/tides/data/:stationId', async (req, res) => {
+    const { stationId } = req.params;
+
+    try {
+      // Fetch 24 hours of predictions (wlp) and Hilo (wlp-hilo)
+      const now = new Date();
+      const from = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString(); // 6 hours back
+      const to = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours forward
+
+      // Time series: wlp = water level prediction
+      const seriesUrl = `https://api-iwls.dfo-mpo.gc.ca/api/v1/stations/${stationId}/data?timeSeriesCode=wlp&from=${from}&to=${to}`;
+      // High/Low: wlp-hilo
+      const hiloUrl = `https://api-iwls.dfo-mpo.gc.ca/api/v1/stations/${stationId}/data?timeSeriesCode=wlp-hilo&from=${from}&to=${to}`;
+
+      const [seriesResp, hiloResp] = await Promise.all([
+        fetch(seriesUrl),
+        fetch(hiloUrl)
+      ]);
+
+      const [series, hilo] = await Promise.all([
+        seriesResp.json(),
+        hiloResp.json()
+      ]);
+
+      res.json({
+        success: true,
+        stationId,
+        predictions: series,
+        highLow: hilo
+      });
+    } catch (err: any) {
+      console.error('[Tides] Data fetch error:', err.message);
+      res.status(500).send('Failed to fetch tidal data');
+    }
   });
 
   // Get all Frigate servers

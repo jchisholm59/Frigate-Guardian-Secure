@@ -276,20 +276,43 @@ async function startServer() {
         });
       });
 
-      birdMqttClient.on('message', (topic, messageBuffer) => {
+      birdMqttClient.on('message', async (topic, messageBuffer) => {
         try {
-          const payload = JSON.parse(messageBuffer.toString('utf-8'));
+          const strPayload = messageBuffer.toString('utf-8');
+          const payload = JSON.parse(strPayload);
+
           // BirdNET-Go typically sends commonName, scientificName, confidence, etc.
           if (payload.commonName || payload.CommonName) {
+            const commonName = payload.commonName || payload.CommonName;
             const detectionId = payload.detectionId || payload.id;
+
+            console.log(`[BirdNET DEBUG] Raw Payload: ${strPayload}`);
+
+            let imageUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(commonName)}`;
+
+            // Try to fetch a real thumbnail from Wikipedia
+            try {
+              const wikiApiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(commonName)}`;
+              const wikiResp = await fetch(wikiApiUrl);
+              if (wikiResp.ok) {
+                const wikiData = await wikiResp.json();
+                if (wikiData.thumbnail?.source) {
+                  imageUrl = wikiData.thumbnail.source;
+                }
+              }
+            } catch (e) {
+              // Fallback to link if API fails
+            }
+
             const sighting = {
               id: detectionId || `bird-${Date.now()}`,
-              commonName: payload.commonName || payload.CommonName,
+              commonName: commonName,
               scientificName: payload.scientificName || payload.ScientificName,
               confidence: payload.confidence || payload.Confidence || 0,
               timestamp: Date.now(),
               sourceNode: payload.SourceNode || 'BirdNET-Go',
-              imageUrl: `https://en.wikipedia.org/wiki/${encodeURIComponent(payload.commonName || payload.CommonName)}`,
+              imageUrl: imageUrl,
+              wikiUrl: `https://en.wikipedia.org/wiki/${encodeURIComponent(commonName)}`,
               audioUrl: config.serverUrl && detectionId
                 ? `/api/birds/proxy/audio/${detectionId}?serverUrl=${encodeURIComponent(config.serverUrl)}`
                 : undefined

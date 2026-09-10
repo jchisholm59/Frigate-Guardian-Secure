@@ -365,14 +365,27 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting }> = ({ sighting }) =>
   return (
     <div className="group bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm hover:border-blue-500/50 transition-all duration-300 flex flex-col">
       <div className="relative aspect-square bg-slate-950 flex items-center justify-center overflow-hidden">
-        {/* We use a placeholder since BirdNET-Go is audio only, but provide a link to Wiki */}
-        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px]" />
+        {/* Bird Image with Wikipedia Thumbnail */}
+        {sighting.imageUrl && sighting.imageUrl.startsWith('http') ? (
+          <img
+            src={sighting.imageUrl}
+            alt={sighting.commonName}
+            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px]" />
+        )}
 
-        <div className="z-10 flex flex-col items-center gap-3">
-          <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform duration-500">
-            <Bird className="w-8 h-8 text-blue-400" />
-          </div>
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-[10px] font-black uppercase text-blue-400 tracking-widest">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 pointer-events-none">
+          {(!sighting.imageUrl || !sighting.imageUrl.startsWith('http')) && (
+            <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform duration-500">
+              <Bird className="w-8 h-8 text-blue-400" />
+            </div>
+          )}
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-950/60 backdrop-blur-md border border-white/10 text-[10px] font-black uppercase text-blue-400 tracking-widest shadow-lg">
             <Volume2 className={`w-3 h-3 ${isPlaying ? 'animate-pulse' : ''}`} />
             {isPlaying ? 'Playing...' : 'Audio Match'}
           </div>

@@ -317,7 +317,7 @@ async function startServer() {
                 if (ai) {
                   const prompt = `You are an expert ornithologist. Give me one single, very interesting, tactically relevant behavioral fact about the ${commonName}. Keep it under 20 words. No intro.`;
                   const result = await ai.models.generateContent({
-                    model: 'gemini-1.5-flash',
+                    model: 'gemini-3.1-flash-lite-preview',
                     contents: prompt,
                   });
                   funFact = result.text.trim();
@@ -419,7 +419,7 @@ async function startServer() {
 
       const prompt = `You are an expert ornithologist. Give me one single, very interesting, tactically relevant behavioral fact about the ${species}. Keep it under 20 words. No intro.`;
       const result = await ai.models.generateContent({
-        model: 'gemini-1.5-flash',
+        model: 'gemini-3.1-flash-lite-preview',
         contents: prompt,
       });
 

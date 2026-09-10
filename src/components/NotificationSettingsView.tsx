@@ -133,6 +133,7 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
         </div>
       </div>
 
+      {/* Selected Stations */}
       <div className="space-y-3">
         <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Your Monitoring Sites</h5>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -159,6 +160,7 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
         </div>
       </div>
 
+      {/* Search Section */}
       <div className="space-y-3 pt-4 border-t border-slate-800">
         <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Find Canadian Tidal Stations</h5>
         <div className="flex gap-2">

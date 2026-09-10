@@ -374,7 +374,7 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
           >
             <Waves className="w-3.5 h-3.5 text-white" />
             <span>Tidal Stations</span>
-            {(localSettings.tides?.stations.length || 0) > 0 && (
+            {(localSettings.tides?.stations?.length || 0) > 0 && (
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
             )}
           </button>
@@ -1299,13 +1299,15 @@ const TidalSettingsSection: React.FC<{ config: TidalStationConfig; onUpdate: (pa
     }
   };
 
+  const currentStations = config?.stations || [];
+
   const addStation = (station: TidalStation) => {
-    if (config.stations.some(s => s.id === station.id)) return;
-    onUpdate({ stations: [...config.stations, station] });
+    if (currentStations.some(s => s.id === station.id)) return;
+    onUpdate({ stations: [...currentStations, station] });
   };
 
   const removeStation = (id: string) => {
-    onUpdate({ stations: config.stations.filter(s => s.id !== id) });
+    onUpdate({ stations: currentStations.filter(s => s.id !== id) });
   };
 
   return (
@@ -1326,7 +1328,7 @@ const TidalSettingsSection: React.FC<{ config: TidalStationConfig; onUpdate: (pa
       <div className="space-y-3">
         <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Your Monitoring Sites</h5>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {config.stations.map((s) => (
+          {currentStations.map((s) => (
             <div key={s.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-800">
               <div>
                 <p className="text-xs font-black text-white uppercase">{s.name}</p>
@@ -1337,7 +1339,7 @@ const TidalSettingsSection: React.FC<{ config: TidalStationConfig; onUpdate: (pa
               </button>
             </div>
           ))}
-          {config.stations.length === 0 && (
+          {currentStations.length === 0 && (
             <p className="text-[10px] text-slate-600 italic py-2">No stations added. Use the search below.</p>
           )}
         </div>

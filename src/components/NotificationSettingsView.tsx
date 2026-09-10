@@ -96,7 +96,6 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
     }
   };
 
-  // Ultra-defensive array extraction
   const currentStations = (config && Array.isArray(config.stations)) ? config.stations : [];
 
   const addStation = (station: TidalStation) => {
@@ -114,7 +113,7 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
     <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-6 shadow-md animate-in fade-in duration-300">
       <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 font-bold text-xl">
+          <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-cyan-400 font-bold text-xl flex items-center justify-center w-10 h-10">
             🌊
           </div>
           <div>
@@ -124,7 +123,6 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
         </div>
       </div>
 
-      {/* Selected Stations */}
       <div className="space-y-3">
         <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Your Monitoring Sites</h5>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -136,7 +134,10 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
                   <p className="text-xs font-black text-white uppercase">{s.name || 'Unknown Station'}</p>
                   <p className="text-[9px] font-mono text-cyan-500">{s.code || 'N/A'}</p>
                 </div>
-                <button onClick={() => removeStation(s.id)} className="p-1.5 rounded-lg text-slate-600 hover:text-rose-500 hover:bg-rose-500/10 transition-all font-black text-[10px]">
+                <button
+                  onClick={() => removeStation(s.id)}
+                  className="px-2 py-1 rounded-lg text-rose-500 hover:bg-rose-500/10 transition-all font-black text-[10px] border border-rose-500/20"
+                >
                   DELETE
                 </button>
               </div>
@@ -148,7 +149,6 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
         </div>
       </div>
 
-      {/* Search Section */}
       <div className="space-y-3 pt-4 border-t border-slate-800">
         <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Find Canadian Tidal Stations</h5>
         <div className="flex gap-2">
@@ -163,7 +163,7 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
           <button
             onClick={handleSearch}
             disabled={isSearching}
-            className="px-4 py-2 rounded-xl bg-cyan-600 text-white text-xs font-black uppercase tracking-widest hover:bg-cyan-500 disabled:opacity-50"
+            className="px-4 py-2 rounded-xl bg-cyan-600 text-white text-xs font-black uppercase tracking-widest hover:bg-cyan-500 disabled:opacity-50 min-w-[80px]"
           >
             {isSearching ? '...' : 'SEARCH'}
           </button>
@@ -179,7 +179,10 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
                     <p className="text-xs font-bold text-slate-200">{s.name}</p>
                     <p className="text-[9px] text-slate-500 font-mono">{s.code} • {s.province}</p>
                   </div>
-                  <button onClick={() => addStation(s)} className="p-1.5 rounded-lg bg-cyan-600/10 text-cyan-400 hover:bg-cyan-600 hover:text-white transition-all font-black text-[10px]">
+                  <button
+                    onClick={() => addStation(s)}
+                    className="px-3 py-1 rounded-lg bg-cyan-600/10 text-cyan-400 hover:bg-cyan-600 hover:text-white transition-all font-black text-[10px] border border-cyan-500/20"
+                  >
                     ADD
                   </button>
                 </div>
@@ -190,130 +193,6 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
       </div>
     </div>
   );
-};
-
-const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (partial: Partial<TidalStationConfig>) => void }> = ({ config, onUpdate }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<TidalStation[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
-    setIsSearching(true);
-    try {
-      const resp = await fetch(`/api/tides/stations/search?q=${encodeURIComponent(searchQuery)}`);
-      const data = await resp.json();
-      if (data && data.success && Array.isArray(data.stations)) {
-        setSearchResults(data.stations);
-      } else {
-        setSearchResults([]);
-      }
-    } catch (err) {
-      console.error('[Tides] Search failed:', err);
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const currentStations = (config && Array.isArray(config.stations)) ? config.stations : [];
-
-  const addStation = (station: TidalStation) => {
-    if (!station || !station.id) return;
-    if (currentStations.some(s => s && s.id === station.id)) return;
-    onUpdate({ stations: [...currentStations, station] });
-  };
-
-  const removeStation = (id: string) => {
-    if (!id) return;
-    onUpdate({ stations: currentStations.filter(s => s && s.id !== id) });
-  };
-
-  try {
-    return (
-      <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-6 shadow-md animate-in fade-in duration-300">
-        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-cyan-400">
-              <Waves className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-black uppercase tracking-tight text-white">Tidal Intelligence Config</h4>
-              <p className="text-xs text-slate-400">Add stations to track real-time water levels and tidal predictions.</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Selected Stations */}
-        <div className="space-y-3">
-          <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Your Monitoring Sites</h5>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {currentStations.map((s, idx) => {
-              if (!s) return null;
-              return (
-                <div key={s.id || `station-${idx}`} className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-800">
-                  <div>
-                    <p className="text-xs font-black text-white uppercase">{s.name || 'Unknown Station'}</p>
-                    <p className="text-[9px] font-mono text-cyan-500">{s.code || 'N/A'}</p>
-                  </div>
-                  <button onClick={() => removeStation(s.id)} className="p-1.5 rounded-lg text-slate-600 hover:text-rose-500 hover:bg-rose-500/10 transition-all font-black text-[10px]">
-                    DELETE
-                  </button>
-                </div>
-              );
-            })}
-            {currentStations.length === 0 && (
-              <p className="text-[10px] text-slate-600 italic py-2">No stations added. Use the search below.</p>
-            )}
-          </div>
-        </div>
-
-        {/* Search Section */}
-        <div className="space-y-3 pt-4 border-t border-slate-800">
-          <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Find Canadian Tidal Stations</h5>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Search name or code (e.g. 'Halifax' or '00490')..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-cyan-500"
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            />
-            <button
-              onClick={handleSearch}
-              disabled={isSearching}
-              className="px-4 py-2 rounded-xl bg-cyan-600 text-white text-xs font-black uppercase tracking-widest hover:bg-cyan-500 disabled:opacity-50"
-            >
-              {isSearching ? '...' : 'SEARCH'}
-            </button>
-          </div>
-
-          {searchResults.length > 0 && (
-            <div className="mt-4 max-h-48 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-slate-800">
-              {searchResults.map((s, idx) => {
-                if (!s) return null;
-                return (
-                  <div key={s.id || `result-${idx}`} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/40 hover:border-cyan-500/30 transition-all">
-                    <div>
-                      <p className="text-xs font-bold text-slate-200">{s.name}</p>
-                      <p className="text-[9px] text-slate-500 font-mono">{s.code} • {s.province}</p>
-                    </div>
-                    <button onClick={() => addStation(s)} className="p-1.5 rounded-lg bg-cyan-600/10 text-cyan-400 hover:bg-cyan-600 hover:text-white transition-all font-black text-[10px]">
-                      ADD
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  } catch (err: any) {
-    console.error('[Tides] Render crash:', err);
-    return <div className="p-6 text-red-500 font-mono text-xs bg-red-950/20 rounded-2xl">Configuration Interface Error. Check console.</div>;
-  }
 };
 
 interface NotificationSettingsViewProps {
@@ -332,7 +211,6 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
   const [showSmtpAdvanced, setShowSmtpAdvanced] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   
-  // Test dispatch status
   const [testingChannel, setTestingChannel] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{
     channel: string;
@@ -340,16 +218,13 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
     message: string;
   } | null>(null);
 
-  // Logs state
   const [logs, setLogs] = useState<NotificationLog[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
 
-  // Sync with prop when changed externally
   useEffect(() => {
     setLocalSettings(settings);
   }, [settings]);
 
-  // Load logs on mount and when logs tab is clicked
   const fetchLogs = async () => {
     setIsLoadingLogs(true);
     try {
@@ -382,7 +257,6 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
     }
   };
 
-  // Helper to update specific nested section
   const updateGmail = (partial: Partial<NotificationSettings['gmail']>) => {
     const updated = {
       ...localSettings,
@@ -438,7 +312,6 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
     onUpdateSettings(updated);
   };
 
-  // Send a test notification
   const handleTestChannel = async (channel: 'gmail' | 'slack' | 'discord') => {
     setTestingChannel(channel);
     setTestResult(null);
@@ -522,1005 +395,274 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
 
   return (
     <div className="space-y-6">
-      {/* Top Banner & Channel Switcher */}
       <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-wrap items-center justify-between gap-3 shadow-md">
         <div className="flex flex-wrap items-center gap-2">
-          {/* Gmail Tab */}
           <button
-            id="tab-notif-gmail"
-            onClick={() => {
-              setActiveChannelTab('gmail');
-              setTestResult(null);
-            }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${
-              activeChannelTab === 'gmail'
-                ? 'bg-red-600 text-white shadow-md'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-            }`}
+            onClick={() => { setActiveChannelTab('gmail'); setTestResult(null); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${activeChannelTab === 'gmail' ? 'bg-red-600 text-white shadow-md' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'}`}
           >
-            <Mail className="w-3.5 h-3.5 text-white" />
-            <span>Gmail / Email</span>
-            {localSettings.gmail.enabled && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            )}
+            <Mail className="w-3.5 h-3.5" />
+            <span>Email</span>
+            {localSettings.gmail.enabled && <span className="w-2 h-2 rounded-full bg-emerald-400" />}
           </button>
 
-          {/* Slack Tab */}
           <button
-            id="tab-notif-slack"
-            onClick={() => {
-              setActiveChannelTab('slack');
-              setTestResult(null);
-            }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${
-              activeChannelTab === 'slack'
-                ? 'bg-[#4A154B] text-white shadow-md border border-[#E01E5A]/50'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-            }`}
+            onClick={() => { setActiveChannelTab('slack'); setTestResult(null); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${activeChannelTab === 'slack' ? 'bg-[#4A154B] text-white shadow-md' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'}`}
           >
-            <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+            <MessageSquare className="w-3.5 h-3.5" />
             <span>Slack</span>
-            {localSettings.slack.enabled && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            )}
+            {localSettings.slack.enabled && <span className="w-2 h-2 rounded-full bg-emerald-400" />}
           </button>
 
-          {/* Discord Tab */}
           <button
-            id="tab-notif-discord"
-            onClick={() => {
-              setActiveChannelTab('discord');
-              setTestResult(null);
-            }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${
-              activeChannelTab === 'discord'
-                ? 'bg-[#5865F2] text-white shadow-md'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-            }`}
+            onClick={() => { setActiveChannelTab('discord'); setTestResult(null); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${activeChannelTab === 'discord' ? 'bg-[#5865F2] text-white shadow-md' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'}`}
           >
-            <Bell className="w-3.5 h-3.5 text-white" />
+            <Bell className="w-3.5 h-3.5" />
             <span>Discord</span>
-            {localSettings.discord.enabled && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            )}
+            {localSettings.discord.enabled && <span className="w-2 h-2 rounded-full bg-emerald-400" />}
           </button>
 
-          {/* BirdNET Tab */}
           <button
-            id="tab-notif-birdnet"
-            onClick={() => {
-              setActiveChannelTab('birdnet');
-              setTestResult(null);
-            }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${
-              activeChannelTab === 'birdnet'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-            }`}
+            onClick={() => { setActiveChannelTab('birdnet'); setTestResult(null); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${activeChannelTab === 'birdnet' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'}`}
           >
-            <Bird className="w-3.5 h-3.5 text-white" />
-            <span>BirdNET-Go</span>
-            {localSettings.birdnet?.enabled && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            )}
+            <Bird className="w-3.5 h-3.5" />
+            <span>Birds</span>
+            {localSettings.birdnet?.enabled && <span className="w-2 h-2 rounded-full bg-emerald-400" />}
           </button>
 
-          {/* Tides Tab */}
           <button
-            id="tab-notif-tides"
-            onClick={() => {
-              setActiveChannelTab('tides');
-              setTestResult(null);
-            }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${
-              activeChannelTab === 'tides'
-                ? 'bg-cyan-600 text-white shadow-md'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-            }`}
+            onClick={() => { setActiveChannelTab('tides'); setTestResult(null); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${activeChannelTab === 'tides' ? 'bg-cyan-600 text-white shadow-md' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'}`}
           >
-            <Waves className="w-3.5 h-3.5 text-white" />
-            <span>Tidal Stations</span>
-            {(localSettings.tides?.stations?.length || 0) > 0 && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            )}
+            <Waves className="w-3.5 h-3.5" />
+            <span>Tides</span>
+            {(localSettings.tides?.stations?.length || 0) > 0 && <span className="w-2 h-2 rounded-full bg-emerald-400" />}
           </button>
 
-          {/* Filter Rules Tab */}
           <button
-            id="tab-notif-filters"
-            onClick={() => {
-              setActiveChannelTab('filters');
-              setTestResult(null);
-            }}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${
-              activeChannelTab === 'filters'
-                ? 'bg-white text-slate-950 shadow-md'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-            }`}
+            onClick={() => { setActiveChannelTab('filters'); setTestResult(null); }}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${activeChannelTab === 'filters' ? 'bg-white text-slate-950 shadow-md' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'}`}
           >
             <Sliders className="w-3.5 h-3.5" />
-            <span>Alert Rules</span>
+            <span>Rules</span>
           </button>
 
-          {/* Audit Logs Tab */}
           <button
-            id="tab-notif-logs"
-            onClick={() => {
-              setActiveChannelTab('logs');
-              setTestResult(null);
-            }}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${
-              activeChannelTab === 'logs'
-                ? 'bg-white text-slate-950 shadow-md'
-                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-            }`}
+            onClick={() => { setActiveChannelTab('logs'); setTestResult(null); }}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${activeChannelTab === 'logs' ? 'bg-white text-slate-950 shadow-md' : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'}`}
           >
             <Radio className="w-3.5 h-3.5" />
-            <span>Delivery Log ({logs.length})</span>
+            <span>Logs</span>
           </button>
-        </div>
-
-        {/* Global Summary Badge */}
-        <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-          <span className="text-slate-500 uppercase font-bold">Active Channels:</span>
-          <span className="text-white font-black">
-            {[
-              localSettings.gmail.enabled ? 'Gmail' : null,
-              localSettings.slack.enabled ? 'Slack' : null,
-              localSettings.discord.enabled ? 'Discord' : null,
-            ]
-              .filter(Boolean)
-              .join(' • ') || 'None (Disabled)'}
-          </span>
         </div>
       </div>
 
-      {/* Test feedback toast */}
       {testResult && (
-        <div
-          className={`p-4 rounded-xl border flex items-start gap-3 text-xs transition-all shadow-md ${
-            testResult.success
-              ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
-              : 'bg-red-950/60 border-red-500/40 text-red-300'
-          }`}
-        >
-          {testResult.success ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
-          ) : (
-            <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
-          )}
-          <div className="flex-1">
-            <span className="font-black uppercase tracking-wider">
-              {testResult.success ? 'Dispatch Success' : 'Dispatch Error'}:
-            </span>{' '}
-            {testResult.message}
-          </div>
-          <button
-            onClick={() => setTestResult(null)}
-            className="text-slate-400 hover:text-white text-xs font-bold uppercase"
-          >
-            Dismiss
-          </button>
+        <div className={`p-4 rounded-xl border flex items-start gap-3 text-xs transition-all shadow-md ${testResult.success ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300' : 'bg-red-950/60 border-red-500/40 text-red-300'}`}>
+          {testResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />}
+          <div className="flex-1 font-bold">{testResult.message}</div>
+          <button onClick={() => setTestResult(null)} className="text-slate-400 hover:text-white text-xs font-bold uppercase">Dismiss</button>
         </div>
       )}
 
-      {/* -------------------- GMAIL / EMAIL TAB -------------------- */}
       {activeChannelTab === 'gmail' && (
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-5 shadow-md">
-          {/* Header & Enable Toggle */}
           <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-red-950/40 border border-red-500/30 text-red-400">
-                <Mail className="w-5 h-5" />
-              </div>
+              <div className="p-2.5 rounded-xl bg-red-950/40 border border-red-500/30 text-red-400"><Mail className="w-5 h-5" /></div>
               <div>
                 <h4 className="text-sm font-black uppercase tracking-tight text-white">Gmail / Email Security Alerts</h4>
-                <p className="text-xs text-slate-400">
-                  Sends formatted HTML surveillance alert emails with detection score and threat level.
-                </p>
+                <p className="text-xs text-slate-400">Sends formatted HTML surveillance alert emails.</p>
               </div>
             </div>
-
-            <div className="flex items-center gap-3">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  id="toggle-gmail-enabled"
-                  type="checkbox"
-                  checked={localSettings.gmail.enabled}
-                  onChange={(e) => updateGmail({ enabled: e.target.checked })}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-                <span className="ml-2.5 text-xs font-black uppercase tracking-wider text-slate-300">
-                  {localSettings.gmail.enabled ? 'Enabled' : 'Disabled'}
-                </span>
-              </label>
-            </div>
-          </div>
-
-          {/* Recipient Address */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-              Recipient Email Address(es) <span className="text-red-400">*</span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" checked={localSettings.gmail.enabled} onChange={(e) => updateGmail({ enabled: e.target.checked })} className="sr-only peer" />
+              <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+              <span className="ml-2.5 text-xs font-black uppercase tracking-wider text-slate-300">{localSettings.gmail.enabled ? 'Enabled' : 'Disabled'}</span>
             </label>
-            <input
-              id="input-gmail-recipients"
-              type="text"
-              placeholder="e.g. security-alerts@example.com, home@example.com"
-              value={localSettings.gmail.recipientEmail}
-              onChange={(e) => updateGmail({ recipientEmail: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-white transition-colors"
-            />
-            <p className="text-xs text-slate-500">
-              Separate multiple recipients with commas. Verified upon dispatch.
-            </p>
           </div>
 
-          {/* Collapsible SMTP / App Password Options */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">Recipient Email Address(es) <span className="text-red-400">*</span></label>
+            <input type="text" placeholder="e.g. security-alerts@example.com" value={localSettings.gmail.recipientEmail} onChange={(e) => updateGmail({ recipientEmail: e.target.value })} className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-white transition-colors" />
+          </div>
+
           <div className="border border-slate-800 bg-slate-900/60 rounded-xl p-4 space-y-3">
-            <div
-              onClick={() => setShowSmtpAdvanced(!showSmtpAdvanced)}
-              className="flex items-center justify-between cursor-pointer text-xs text-slate-300 hover:text-white"
-            >
+            <div onClick={() => setShowSmtpAdvanced(!showSmtpAdvanced)} className="flex items-center justify-between cursor-pointer text-xs text-slate-300 hover:text-white">
               <div className="flex items-center gap-2">
                 <Key className="w-4 h-4 text-red-400" />
-                <span className="uppercase tracking-wider font-black">
-                  SMTP & Google App Password Configuration
-                </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300 font-bold">
-                  {localSettings.gmail.smtpUser ? 'Configured' : 'Optional (Uses Simulation Mode)'}
-                </span>
+                <span className="uppercase tracking-wider font-black">SMTP & App Password</span>
               </div>
-              {showSmtpAdvanced ? (
-                <ChevronUp className="w-4 h-4" />
-              ) : (
-                <ChevronDown className="w-4 h-4" />
-              )}
+              {showSmtpAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </div>
 
             {showSmtpAdvanced && (
               <div className="space-y-3 pt-3 border-t border-slate-800">
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 space-y-1">
-                  <p className="font-black text-white uppercase tracking-tight">How to use with Gmail:</p>
-                  <p>
-                    1. Go to your Google Account &rarr; Security &rarr; 2-Step Verification &rarr; <strong>App passwords</strong>.
-                  </p>
-                  <p>2. Create an App password named &quot;Frigate Guardian&quot; and paste the 16-character code below.</p>
-                </div>
-
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-slate-400">Gmail / SMTP Username</label>
-                    <input
-                      id="input-gmail-smtp-user"
-                      type="text"
-                      placeholder="your.email@gmail.com"
-                      value={localSettings.gmail.smtpUser || ''}
-                      onChange={(e) => updateGmail({ smtpUser: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-white transition-colors"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] uppercase font-bold text-slate-400">App Password / Secret</label>
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="text-[10px] text-slate-400 hover:text-white uppercase font-bold"
-                      >
-                        {showPassword ? 'Hide' : 'Show'}
-                      </button>
-                    </div>
-                    <input
-                      id="input-gmail-smtp-pass"
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="16-character app password"
-                      value={localSettings.gmail.smtpPassword || ''}
-                      onChange={(e) => updateGmail({ smtpPassword: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-white transition-colors"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-slate-400">SMTP Host</label>
-                    <input
-                      type="text"
-                      placeholder="smtp.gmail.com"
-                      value={localSettings.gmail.smtpHost || 'smtp.gmail.com'}
-                      onChange={(e) => updateGmail({ smtpHost: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-white transition-colors"
-                    />
+                    <label className="text-[10px] uppercase font-bold text-slate-400">SMTP Username</label>
+                    <input type="text" value={localSettings.gmail.smtpUser || ''} onChange={(e) => updateGmail({ smtpUser: e.target.value })} className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-white" />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-slate-400">Port (465 SSL / 587 TLS)</label>
-                    <input
-                      type="number"
-                      placeholder="465"
-                      value={localSettings.gmail.smtpPort || 465}
-                      onChange={(e) => updateGmail({ smtpPort: Number(e.target.value) })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-white transition-colors"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-slate-400">Sender Display Name</label>
-                    <input
-                      type="text"
-                      placeholder="Frigate Guardian NVR"
-                      value={localSettings.gmail.senderName || 'Frigate Guardian NVR'}
-                      onChange={(e) => updateGmail({ senderName: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-white transition-colors"
-                    />
+                    <label className="text-[10px] uppercase font-bold text-slate-400">App Password</label>
+                    <input type={showPassword ? 'text' : 'password'} value={localSettings.gmail.smtpPassword || ''} onChange={(e) => updateGmail({ smtpPassword: e.target.value })} className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-white" />
                   </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Test Dispatch Button */}
           <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-slate-500 font-mono">
-              Validates recipient, parses security template, and transmits alert.
-            </span>
-            <button
-              id="btn-test-gmail"
-              onClick={() => handleTestChannel('gmail')}
-              disabled={testingChannel === 'gmail' || !localSettings.gmail.recipientEmail}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs uppercase font-black tracking-wider bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-md active:scale-95"
-            >
-              {testingChannel === 'gmail' ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Send className="w-3.5 h-3.5" />
-              )}
-              <span>{testingChannel === 'gmail' ? 'Transmitting...' : 'Send Test Email'}</span>
+            <span className="text-xs text-slate-500 font-mono italic">Transmits alert via secure SMTP relay.</span>
+            <button onClick={() => handleTestChannel('gmail')} disabled={testingChannel === 'gmail' || !localSettings.gmail.recipientEmail} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs uppercase font-black tracking-wider bg-red-600 hover:bg-red-500 text-white disabled:opacity-40 shadow-md">
+              {testingChannel === 'gmail' ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+              <span>{testingChannel === 'gmail' ? 'SENDING...' : 'TEST EMAIL'}</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* -------------------- SLACK TAB -------------------- */}
       {activeChannelTab === 'slack' && (
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-5 shadow-md">
-          {/* Header & Enable Toggle */}
           <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-[#4A154B]/60 border border-[#E01E5A]/30 text-emerald-400">
-                <MessageSquare className="w-5 h-5" />
-              </div>
+              <div className="p-2.5 rounded-xl bg-[#4A154B]/60 border border-[#E01E5A]/30 text-emerald-400"><MessageSquare className="w-5 h-5" /></div>
               <div>
-                <h4 className="text-sm font-black uppercase tracking-tight text-white">Slack Incoming Webhook Integration</h4>
-                <p className="text-xs text-slate-400">
-                  Posts structured Block Kit security alerts directly into your Slack team channel.
-                </p>
+                <h4 className="text-sm font-black uppercase tracking-tight text-white">Slack Webhook Integration</h4>
+                <p className="text-xs text-slate-400">Posts alerts directly into Slack.</p>
               </div>
             </div>
-
-            <div className="flex items-center gap-3">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  id="toggle-slack-enabled"
-                  type="checkbox"
-                  checked={localSettings.slack.enabled}
-                  onChange={(e) => updateSlack({ enabled: e.target.checked })}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#4A154B]"></div>
-                <span className="ml-2.5 text-xs font-black uppercase tracking-wider text-slate-300">
-                  {localSettings.slack.enabled ? 'Enabled' : 'Disabled'}
-                </span>
-              </label>
-            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" checked={localSettings.slack.enabled} onChange={(e) => updateSlack({ enabled: e.target.checked })} className="sr-only peer" />
+              <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#4A154B]"></div>
+              <span className="ml-2.5 text-xs font-black uppercase tracking-wider text-slate-300">{localSettings.slack.enabled ? 'Enabled' : 'Disabled'}</span>
+            </label>
           </div>
-
-          {/* Webhook URL */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                Slack Incoming Webhook URL <span className="text-red-400">*</span>
-              </label>
-              <a
-                href="https://api.slack.com/messaging/webhooks"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-white"
-              >
-                <span>Slack Webhook Docs</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-            <input
-              id="input-slack-webhook"
-              type="text"
-              placeholder="https://hooks.slack.com/services/your-webhook-url-here"
-              value={localSettings.slack.webhookUrl}
-              onChange={(e) => updateSlack({ webhookUrl: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-white transition-colors"
-            />
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">Webhook URL <span className="text-red-400">*</span></label>
+            <input type="text" value={localSettings.slack.webhookUrl} onChange={(e) => updateSlack({ webhookUrl: e.target.value })} className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-white transition-colors" />
           </div>
-
-          {/* Channel Name & Username */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-[10px] uppercase font-bold text-slate-400">Target Channel (Optional)</label>
-              <input
-                type="text"
-                placeholder="#security-alerts"
-                value={localSettings.slack.channel || ''}
-                onChange={(e) => updateSlack({ channel: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-white transition-colors"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-[10px] uppercase font-bold text-slate-400">Bot Display Name</label>
-              <input
-                type="text"
-                placeholder="Frigate Guardian NVR"
-                value={localSettings.slack.username || ''}
-                onChange={(e) => updateSlack({ username: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-white transition-colors"
-              />
-            </div>
-          </div>
-
-          {/* Test Button */}
-          <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-slate-500 font-mono">
-              Sends an interactive Block Kit event card with camera detection data.
-            </span>
-            <button
-              id="btn-test-slack"
-              onClick={() => handleTestChannel('slack')}
-              disabled={testingChannel === 'slack' || !localSettings.slack.webhookUrl}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs uppercase font-black tracking-wider bg-[#4A154B] hover:bg-[#611f64] text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed border border-[#E01E5A]/40 shadow-md active:scale-95"
-            >
-              {testingChannel === 'slack' ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Send className="w-3.5 h-3.5 text-emerald-300" />
-              )}
-              <span>{testingChannel === 'slack' ? 'Posting to Slack...' : 'Send Test Alert'}</span>
-            </button>
-          </div>
+          <button onClick={() => handleTestChannel('slack')} disabled={testingChannel === 'slack' || !localSettings.slack.webhookUrl} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs uppercase font-black tracking-wider bg-[#4A154B] hover:bg-[#611f64] text-white disabled:opacity-40 shadow-md">
+            <Send className="w-3.5 h-3.5 text-emerald-300" />
+            <span>TEST SLACK</span>
+          </button>
         </div>
       )}
 
-      {/* -------------------- DISCORD TAB -------------------- */}
       {activeChannelTab === 'discord' && (
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-5 shadow-md">
-          {/* Header & Enable Toggle */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-800">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-[#5865F2]/20 border border-[#5865F2]/40 text-[#5865F2]">
-                <Bell className="w-5 h-5 text-white" />
-              </div>
+              <div className="p-2.5 rounded-xl bg-[#5865F2]/20 border border-[#5865F2]/40 text-[#5865F2]"><Bell className="w-5 h-5 text-white" /></div>
               <div>
-                <h4 className="text-sm font-black uppercase tracking-tight text-white">Discord Webhook Notifications</h4>
-                <p className="text-xs text-slate-400">
-                  Sends Rich Color-Coded Embeds with camera snapshots, threat metrics, and zone tags.
-                </p>
+                <h4 className="text-sm font-black uppercase tracking-tight text-white">Discord Webhooks</h4>
+                <p className="text-xs text-slate-400">Sends rich embeds to Discord channels.</p>
               </div>
             </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" checked={localSettings.discord.enabled} onChange={(e) => updateDiscord({ enabled: e.target.checked })} className="sr-only peer" />
+              <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#5865F2]"></div>
+              <span className="ml-2.5 text-xs font-black uppercase tracking-wider text-slate-300">{localSettings.discord.enabled ? 'Enabled' : 'Disabled'}</span>
+            </label>
+          </div>
+          <input type="text" placeholder="Webhook URL" value={localSettings.discord.webhookUrl} onChange={(e) => updateDiscord({ webhookUrl: e.target.value })} className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-white transition-colors" />
+          <button onClick={() => handleTestChannel('discord')} disabled={testingChannel === 'discord' || !localSettings.discord.webhookUrl} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs uppercase font-black tracking-wider bg-[#5865F2] hover:bg-[#4752C4] text-white shadow-md">
+            <Send className="w-3.5 h-3.5" />
+            <span>TEST DISCORD</span>
+          </button>
+        </div>
+      )}
 
+      {activeChannelTab === 'birdnet' && (
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-5 shadow-md">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-800">
             <div className="flex items-center gap-3">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  id="toggle-discord-enabled"
-                  type="checkbox"
-                  checked={localSettings.discord.enabled}
-                  onChange={(e) => updateDiscord({ enabled: e.target.checked })}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#5865F2]"></div>
-                <span className="ml-2.5 text-xs font-black uppercase tracking-wider text-slate-300">
-                  {localSettings.discord.enabled ? 'Enabled' : 'Disabled'}
-                </span>
-              </label>
+              <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/30 text-blue-400"><Bird className="w-5 h-5" /></div>
+              <h4 className="text-sm font-black uppercase tracking-tight text-white">BirdNET-Go Integration</h4>
             </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" checked={localSettings.birdnet?.enabled} onChange={(e) => updateBirdnet({ enabled: e.target.checked })} className="sr-only peer" />
+              <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              <span className="ml-2.5 text-xs font-black uppercase tracking-wider text-slate-300">{localSettings.birdnet?.enabled ? 'Enabled' : 'Disabled'}</span>
+            </label>
           </div>
-
-          {/* Webhook URL */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-                Discord Webhook URL <span className="text-red-400">*</span>
-              </label>
-              <a
-                href="https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-white"
-              >
-                <span>Discord Webhook Setup Guide</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-            <input
-              id="input-discord-webhook"
-              type="text"
-              placeholder="https://discord.com/api/webhooks/1234567890/abcdefg..."
-              value={localSettings.discord.webhookUrl}
-              onChange={(e) => updateDiscord({ webhookUrl: e.target.value })}
-              className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-white transition-colors"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+             <input type="text" placeholder="Broker Host" value={localSettings.birdnet?.brokerHost || ''} onChange={(e) => updateBirdnet({ brokerHost: e.target.value })} className="bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white" />
+             <input type="text" placeholder="BirdNET Web URL" value={localSettings.birdnet?.serverUrl || ''} onChange={(e) => updateBirdnet({ serverUrl: e.target.value })} className="bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white" />
+             <input type="text" placeholder="Live Audio RTSP" value={localSettings.birdnet?.liveAudioUrl || ''} onChange={(e) => updateBirdnet({ liveAudioUrl: e.target.value })} className="bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white" />
+             <input type="text" placeholder="Topic" value={localSettings.birdnet?.topic || ''} onChange={(e) => updateBirdnet({ topic: e.target.value })} className="bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white" />
           </div>
-
-          {/* Bot Username & Avatar */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-[10px] uppercase font-bold text-slate-400">Bot Display Name</label>
-              <input
-                type="text"
-                placeholder="Frigate AI Vision"
-                value={localSettings.discord.botUsername || ''}
-                onChange={(e) => updateDiscord({ botUsername: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-white transition-colors"
-              />
+          <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-500/20 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-black text-white uppercase tracking-tight">Daily Species Sentinel</p>
+              <p className="text-[10px] text-amber-500 font-bold uppercase italic">Alert on first sighting of day</p>
             </div>
-            <div className="space-y-1">
-              <label className="text-[10px] uppercase font-bold text-slate-400">Custom Avatar Icon URL</label>
-              <input
-                type="text"
-                placeholder="https://.../avatar.png"
-                value={localSettings.discord.avatarUrl || ''}
-                onChange={(e) => updateDiscord({ avatarUrl: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-white transition-colors"
-              />
-            </div>
-          </div>
-
-          {/* Test Button */}
-          <div className="flex items-center justify-between pt-2">
-            <span className="text-xs text-slate-500 font-mono">
-              Emits a high-contrast Discord Rich Embed with alert level and detection stats.
-            </span>
-            <button
-              id="btn-test-discord"
-              onClick={() => handleTestChannel('discord')}
-              disabled={testingChannel === 'discord' || !localSettings.discord.webhookUrl}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs uppercase font-black tracking-wider bg-[#5865F2] hover:bg-[#4752C4] text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-md active:scale-95"
-            >
-              {testingChannel === 'discord' ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Send className="w-3.5 h-3.5" />
-              )}
-              <span>{testingChannel === 'discord' ? 'Posting to Discord...' : 'Send Test Alert'}</span>
+            <button onClick={() => updateBirdnet({ sendDailyAlerts: !localSettings.birdnet?.sendDailyAlerts })} className={`relative inline-flex h-5 w-10 rounded-full ${localSettings.birdnet?.sendDailyAlerts ? 'bg-amber-600' : 'bg-slate-700'}`}>
+              <span className={`h-4 w-4 transform rounded-full bg-white transition ${localSettings.birdnet?.sendDailyAlerts ? 'translate-x-5' : 'translate-x-0'}`} />
             </button>
           </div>
         </div>
       )}
 
-      {/* -------------------- BIRDNET-GO TAB -------------------- */}
-      {activeChannelTab === 'birdnet' && (
-        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-5 shadow-md">
-          {/* Header & Enable Toggle */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/30 text-blue-400">
-                <Bird className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="text-sm font-black uppercase tracking-tight text-white">BirdNET-Go Integration</h4>
-                <p className="text-xs text-slate-400">
-                  Connect to your BirdNET-Go instance via MQTT to track bird sightings in your yard.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  id="toggle-birdnet-enabled"
-                  type="checkbox"
-                  checked={localSettings.birdnet?.enabled}
-                  onChange={(e) => updateBirdnet({ enabled: e.target.checked })}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                <span className="ml-2.5 text-xs font-black uppercase tracking-wider text-slate-300">
-                  {localSettings.birdnet?.enabled ? 'Enabled' : 'Disabled'}
-                </span>
-              </label>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">MQTT Broker Host</label>
-              <input
-                type="text"
-                placeholder="192.168.1.xxx"
-                value={localSettings.birdnet?.brokerHost || ''}
-                onChange={(e) => updateBirdnet({ brokerHost: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-700 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">BirdNET-Go Web URL</label>
-              <input
-                type="text"
-                placeholder="http://192.168.1.xxx:8080"
-                value={localSettings.birdnet?.serverUrl || ''}
-                onChange={(e) => updateBirdnet({ serverUrl: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-700 focus:outline-none focus:border-blue-500"
-              />
-              <p className="text-[10px] text-slate-500 italic mt-1">Required for audio clip playback (e.g. http://192.168.2.210:8080)</p>
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Live Audio RTSP URL</label>
-              <input
-                type="text"
-                placeholder="rtsp://192.168.1.xxx:554/live"
-                value={localSettings.birdnet?.liveAudioUrl || ''}
-                onChange={(e) => updateBirdnet({ liveAudioUrl: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-700 focus:outline-none focus:border-blue-500"
-              />
-              <p className="text-[10px] text-slate-500 italic mt-1">Direct RTSP feed from your ESP32 audio server.</p>
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">MQTT Port</label>
-              <input
-                type="number"
-                placeholder="1883"
-                value={localSettings.birdnet?.port || 1883}
-                onChange={(e) => updateBirdnet({ port: Number(e.target.value) })}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">MQTT Topic</label>
-              <input
-                type="text"
-                placeholder="birdnet-sightings"
-                value={localSettings.birdnet?.topic || 'birdnet-sightings'}
-                onChange={(e) => updateBirdnet({ topic: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div className="sm:col-span-2 p-4 rounded-xl bg-amber-950/20 border border-amber-500/20 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-amber-600 flex items-center justify-center shadow-lg shadow-amber-600/20">
-                    <Bell className="w-4 h-4 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black uppercase tracking-wider text-white">Daily Species Sentinel</h4>
-                    <p className="text-[10px] text-amber-500 font-bold uppercase tracking-tight">Alert on first discovery of each day</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => updateBirdnet({ sendDailyAlerts: !localSettings.birdnet?.sendDailyAlerts })}
-                  className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                    localSettings.birdnet?.sendDailyAlerts ? 'bg-amber-600' : 'bg-slate-700'
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      localSettings.birdnet?.sendDailyAlerts ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">MQTT Username (Optional)</label>
-              <input
-                type="text"
-                placeholder="None"
-                value={localSettings.birdnet?.username || ''}
-                onChange={(e) => updateBirdnet({ username: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            <div className="sm:col-span-2 space-y-1.5">
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">MQTT Password (Optional)</label>
-              <input
-                type="password"
-                placeholder="None"
-                value={localSettings.birdnet?.password || ''}
-                onChange={(e) => updateBirdnet({ password: e.target.value })}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white focus:outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          <div className="p-4 rounded-xl bg-blue-900/10 border border-blue-500/20 text-xs text-blue-300">
-            <p className="font-bold mb-1">Cottage Compatibility Mode:</p>
-            <p className="opacity-80 leading-relaxed">
-              If your cottage uses a different MQTT broker, you can specify its unique IP and credentials here.
-              The sightings will be synced to this dashboard in real-time.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* -------------------- TIDAL STATIONS TAB -------------------- */}
       {activeChannelTab === 'tides' && (
-        <TidalSettingsSection
-          config={localSettings.tides || DEFAULT_NOTIFICATION_SETTINGS.tides!}
-          onUpdate={updateTides}
-        />
+        <TidalSettingsSection config={localSettings.tides} onUpdate={updateTides} />
       )}
 
-      {/* -------------------- ALERT RULES & FILTERS TAB -------------------- */}
       {activeChannelTab === 'filters' && (
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-5 shadow-md">
-          <div className="pb-4 border-b border-slate-800">
-            <h4 className="text-sm font-black uppercase tracking-tight text-white">Event Notification Trigger Rules</h4>
-            <p className="text-xs text-slate-400">
-              Control which detected events trigger dispatches to Gmail, Slack, and Discord.
-            </p>
-          </div>
-
-          {/* Minimum Threat Level */}
-          <div className="space-y-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-              Minimum Threat Level Filter
-            </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <button
-                type="button"
-                onClick={() => updateFilters({ minThreatLevel: 'all' })}
-                className={`p-3.5 rounded-xl text-left border transition-all ${
-                  localSettings.filters.minThreatLevel === 'all'
-                    ? 'bg-slate-900 border-white text-white shadow-md'
-                    : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="text-xs font-black uppercase tracking-wider">ALL THREAT LEVELS</div>
-                <div className="text-xs text-slate-500 mt-1">Low, Medium, and High events trigger alerts</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => updateFilters({ minThreatLevel: 'medium_high' })}
-                className={`p-3.5 rounded-xl text-left border transition-all ${
-                  localSettings.filters.minThreatLevel === 'medium_high'
-                    ? 'bg-amber-950/40 border-amber-500/60 text-amber-200 shadow-md'
-                    : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="text-xs font-black uppercase tracking-wider text-amber-400">MEDIUM & HIGH ONLY</div>
-                <div className="text-xs text-slate-500 mt-1">Recommended: Ignores low confidence/routine events</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => updateFilters({ minThreatLevel: 'high_only' })}
-                className={`p-3.5 rounded-xl text-left border transition-all ${
-                  localSettings.filters.minThreatLevel === 'high_only'
-                    ? 'bg-red-950/40 border-red-500/60 text-red-200 shadow-md'
-                    : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                <div className="text-xs font-black uppercase tracking-wider text-red-400">CRITICAL / HIGH ONLY</div>
-                <div className="text-xs text-slate-500 mt-1">Only verified security intrusions & alerts</div>
-              </button>
-            </div>
-          </div>
-
-          {/* Importance Filter */}
-          <div className="space-y-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-              Frigate Event Classification
-            </label>
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                onClick={() => updateFilters({ minImportance: 'all' })}
-                className={`px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider border transition-all ${
-                  localSettings.filters.minImportance === 'all'
-                    ? 'bg-white text-slate-950 border-white shadow-md'
-                    : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-                }`}
-              >
-                All Detections
-              </button>
-              <button
-                type="button"
-                onClick={() => updateFilters({ minImportance: 'alert_only' })}
-                className={`px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider border transition-all ${
-                  localSettings.filters.minImportance === 'alert_only'
-                    ? 'bg-red-600 text-white border-red-600 shadow-md'
-                    : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-                }`}
-              >
-                Alerts & Review Only
-              </button>
-            </div>
-          </div>
-
-          {/* Target Object Labels */}
-          <div className="space-y-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-              Target Object Labels ({localSettings.filters.targetLabels?.length || 0} selected)
-            </label>
-            <div className="flex flex-wrap gap-2">
+           <div className="pb-4 border-b border-slate-800">
+             <h4 className="text-sm font-black uppercase tracking-tight text-white">Alert Rules</h4>
+           </div>
+           <div className="flex flex-wrap gap-2">
               {availableLabels.map((item) => {
                 const isSelected = localSettings.filters.targetLabels?.includes(item.id);
                 return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => toggleTargetLabel(item.id)}
-                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider border transition-all ${
-                      isSelected
-                        ? 'bg-white text-slate-950 border-white shadow-sm'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <span>{item.icon}</span>
-                    <span>{item.label}</span>
-                    <span className="text-[10px] ml-1">{isSelected ? '✓' : '+'}</span>
+                  <button key={item.id} onClick={() => toggleTargetLabel(item.id)} className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black uppercase border transition-all ${isSelected ? 'bg-white text-slate-950 border-white' : 'bg-slate-900 text-slate-400 border-slate-800'}`}>
+                    <span>{item.icon}</span><span>{item.label}</span>
                   </button>
                 );
               })}
-            </div>
-            <p className="text-xs text-slate-500">
-              Only events containing at least one selected target label will trigger notifications.
-            </p>
-          </div>
-
-          {/* Cooldown Timer */}
-          <div className="space-y-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
-              Notification Cooldown Prevention
-            </label>
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-slate-400" />
-              {[
-                { sec: 0, label: 'No Delay' },
-                { sec: 15, label: '15 seconds' },
-                { sec: 30, label: '30 seconds' },
-                { sec: 60, label: '1 minute' },
-              ].map((c) => (
-                <button
-                  key={c.sec}
-                  type="button"
-                  onClick={() => updateFilters({ cooldownSeconds: c.sec })}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
-                    localSettings.filters.cooldownSeconds === c.sec
-                      ? 'bg-white text-slate-950 shadow-sm'
-                      : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
-                  }`}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-slate-500">
-              Prevents duplicate notification spam during continuous camera tracking events.
-            </p>
-          </div>
-
-          {/* AI Intelligence: Parked Car Logic */}
-          <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-emerald-950 flex items-center justify-center border border-emerald-500/30">
-                  <Shield className="w-4 h-4 text-emerald-400" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-black uppercase tracking-wider text-white">Intelligent Parked Car Filtering</h4>
-                  <p className="text-[10px] text-slate-400 font-medium">Ignore cars that Frigate flags as stationary.</p>
-                </div>
+           </div>
+           <div className="p-5 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-black uppercase text-white">Ignore Parked Cars</h4>
+                <p className="text-[10px] text-slate-400">Ignore stationary vehicles.</p>
               </div>
-              <button
-                type="button"
-                onClick={() => updateFilters({ ignoreParkedCars: !localSettings.filters.ignoreParkedCars })}
-                className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                  localSettings.filters.ignoreParkedCars ? 'bg-emerald-600' : 'bg-slate-700'
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                    localSettings.filters.ignoreParkedCars ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
+              <button onClick={() => updateFilters({ ignoreParkedCars: !localSettings.filters.ignoreParkedCars })} className={`relative inline-flex h-5 w-10 rounded-full ${localSettings.filters.ignoreParkedCars ? 'bg-emerald-600' : 'bg-slate-700'}`}>
+                <span className={`h-4 w-4 transform rounded-full bg-white transition ${localSettings.filters.ignoreParkedCars ? 'translate-x-5' : 'translate-x-0'}`} />
               </button>
-            </div>
-          </div>
+           </div>
         </div>
       )}
 
-      {/* -------------------- DELIVERY LOGS TAB -------------------- */}
       {activeChannelTab === 'logs' && (
         <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-md">
           <div className="flex items-center justify-between pb-4 border-b border-slate-800">
-            <div>
-              <h4 className="text-sm font-black uppercase tracking-tight text-white">Live Notification Delivery Logs</h4>
-              <p className="text-xs text-slate-400">
-                Audit trail of events dispatched to Gmail, Slack, and Discord.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={fetchLogs}
-                disabled={isLoadingLogs}
-                className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition-colors"
-                title="Refresh logs"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingLogs ? 'animate-spin' : ''}`} />
-              </button>
-              <button
-                onClick={handleClearLogs}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-red-400 text-xs font-bold uppercase transition-colors"
-              >
-                <Trash2 className="w-3 h-3" />
-                <span>Clear</span>
-              </button>
+            <h4 className="text-sm font-black uppercase tracking-tight text-white">Delivery Log</h4>
+            <div className="flex gap-2">
+              <button onClick={fetchLogs} className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400"><RefreshCw className={`w-3.5 h-3.5 ${isLoadingLogs ? 'animate-spin' : ''}`} /></button>
+              <button onClick={handleClearLogs} className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 text-xs font-bold uppercase">Clear</button>
             </div>
           </div>
-
-          {logs.length === 0 ? (
-            <div className="py-8 text-center text-slate-500 font-mono text-xs">
-              No notifications dispatched yet. Try sending a test alert or trigger an event.
-            </div>
-          ) : (
-            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1 font-mono">
-              {logs.map((log) => {
-                const channelColor =
-                  log.channel === 'gmail'
-                    ? 'text-red-400 border-red-500/30 bg-red-950/30'
-                    : log.channel === 'slack'
-                    ? 'text-emerald-400 border-emerald-500/30 bg-emerald-950/30'
-                    : 'text-indigo-400 border-indigo-500/30 bg-indigo-950/30';
-
-                return (
-                  <div
-                    key={log.id}
-                    className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start justify-between gap-3 text-xs"
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className={`px-2 py-0.5 rounded-lg border uppercase text-[10px] font-black tracking-wider ${channelColor}`}>
-                        {log.channel}
-                      </span>
-                      <div>
-                        <div className="text-white font-bold">
-                          {log.message}
-                        </div>
-                        <div className="text-xs text-slate-400 mt-1 flex items-center gap-2">
-                          <span>Camera: <strong className="text-slate-200">{log.camera}</strong></span>
-                          <span>•</span>
-                          <span>Object: <strong className="text-slate-200">{log.label}</strong></span>
-                          {log.details && (
-                            <>
-                              <span>•</span>
-                              <span>{log.details}</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div
-                        className={`text-xs uppercase font-black tracking-wider ${
-                          log.status === 'sent'
-                            ? 'text-emerald-400'
-                            : log.status === 'simulated'
-                            ? 'text-amber-400'
-                            : 'text-red-400'
-                        }`}
-                      >
-                        {log.status}
-                      </div>
-                      <div className="text-xs text-slate-500 mt-0.5">
-                        {new Date(log.timestamp).toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1 font-mono">
+            {logs.map((log) => (
+              <div key={log.id} className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-start justify-between gap-3 text-xs">
+                <div className="flex gap-3">
+                  <span className="text-blue-400 uppercase font-black text-[10px]">{log.channel}</span>
+                  <div className="text-white font-bold">{log.message}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-emerald-400 uppercase font-black text-[10px]">{log.status}</div>
+                  <div className="text-[10px] text-slate-500">{new Date(log.timestamp).toLocaleTimeString()}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
 };
-

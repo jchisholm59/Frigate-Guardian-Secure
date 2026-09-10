@@ -446,9 +446,10 @@ async function startServer() {
     res.setHeader('Access-Control-Allow-Origin', '*'); // Allow browser to stream via proxy
 
     // Use FFmpeg to grab RTSP audio and pipe it as MP3 to the browser
-    // Added -loglevel debug for troubleshooting in PM2 logs
+    // Added -rtsp_transport tcp for better compatibility with ESP32/camera servers
     const ffmpeg = spawn('ffmpeg', [
       '-loglevel', 'info',
+      '-rtsp_transport', 'tcp', // Force TCP to avoid "Nonmatching transport" errors
       '-i', rtspUrl,
       '-vn',                   // No video
       '-acodec', 'libmp3lame', // Encode to MP3

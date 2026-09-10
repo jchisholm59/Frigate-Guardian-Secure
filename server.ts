@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import { execSync, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import mqtt, { type MqttClient } from 'mqtt';
@@ -13,7 +14,7 @@ import { Readable, Transform } from 'stream';
 import nodemailer from 'nodemailer';
 import archiver from 'archiver';
 
-// --- CONSTANTS & HELPERS ---
+// --- HELPERS ---
 const __filename = typeof import.meta.url !== 'undefined' ? fileURLToPath(import.meta.url) : '';
 const __dirname = path.dirname(__filename || process.cwd());
 
@@ -29,6 +30,28 @@ const SETTINGS_FILE = path.join(DATA_DIR, 'notification_settings.json');
 const MQTT_CONFIG_FILE = path.join(DATA_DIR, 'mqtt_config.json');
 const BIRD_SIGHTINGS_FILE = path.join(DATA_DIR, 'bird_sightings.json');
 const SERVERS_FILE = path.join(DATA_DIR, 'frigate_servers.json');
+
+// --- H.265 Mac Compatibility Patcher ---
+class HevcPatchStream extends Transform {
+  private tail: Buffer = Buffer.alloc(0);
+  private search: Buffer = Buffer.from('hev1');
+  private replace: Buffer = Buffer.from('hvc1');
+  _transform(chunk: any, encoding: string, callback: Function) {
+    let data = Buffer.concat([this.tail, chunk]);
+    let pos = 0;
+    while ((pos = data.indexOf(this.search, pos)) !== -1) {
+      this.replace.copy(data, pos);
+      pos += 4;
+    }
+    const tailSize = this.search.length - 1;
+    if (data.length > tailSize) {
+      this.push(data.slice(0, data.length - tailSize));
+      this.tail = data.slice(data.length - tailSize);
+    } else { this.tail = data; }
+    callback();
+  }
+  _flush(callback: Function) { this.push(this.tail); callback(); }
+}
 
 // --- STATE ---
 let aiClient: GoogleGenAI | null = null;
@@ -62,10 +85,9 @@ function saveServers() { fs.writeFileSync(SERVERS_FILE, JSON.stringify(persisten
 
 // --- AI ENGINE ---
 function getAiClient() {
-  if (aiClient) return aiClient;
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
-  aiClient = new GoogleGenAI(key);
+  if (!aiClient) aiClient = new GoogleGenAI(key);
   return aiClient;
 }
 
@@ -76,12 +98,11 @@ function broadcastToSse(data: any) {
 }
 
 // --- NOTIFICATION ENGINE ---
-const notifiedEvents = new Map<string, number>();
 async function dispatchNotification(event: any, settings: any) {
   if (!event || !settings) return { success: false };
   const now = Date.now();
 
-  // Parked Vehicle Filter (Truck/Car Jitter)
+  // Smart Vehicle Jitter Filter
   const vehicleLabels = ['car', 'truck', 'van', 'motorcycle', 'bus'];
   if (settings.filters?.ignoreParkedCars && vehicleLabels.includes(event.label)) {
     const box = event.box || { x: 0.5, y: 0.5, width: 0, height: 0 };
@@ -100,8 +121,8 @@ async function dispatchNotification(event: any, settings: any) {
     }
   }
 
-  console.log(`[Alert] Dispatching for ${event.label} on ${event.camera}`);
-  return { success: true, dispatched: ['simulated'] };
+  console.log(`[Alert] Dispatching alert for ${event.label} on ${event.camera}`);
+  return { success: true, dispatched: ['simulation'] };
 }
 
 // --- MQTT (BIRDNET) ---
@@ -112,10 +133,16 @@ function connectBirdMqtt() {
   const cfg = persistentSettings.birdnet;
   if (!cfg?.enabled || !cfg?.brokerHost) return;
   if (birdMqttClient) birdMqttClient.end();
+
   birdMqttStatus.connecting = true;
-  birdMqttClient = mqtt.connect(`mqtt://${cfg.brokerHost}:${cfg.port || 1883}`, { username: cfg.username, password: cfg.password });
+  birdMqttClient = mqtt.connect(`mqtt://${cfg.brokerHost}:${cfg.port || 1883}`, {
+    username: cfg.username,
+    password: cfg.password,
+    reconnectPeriod: 5000
+  });
 
   birdMqttClient.on('connect', () => {
+    console.log(`[BirdNET] Connected to ${cfg.brokerHost}`);
     birdMqttStatus.connected = true;
     birdMqttStatus.connecting = false;
     birdMqttClient?.subscribe(cfg.topic || 'birdnet-sightings');
@@ -131,9 +158,12 @@ function connectBirdMqtt() {
       if (!funFact) {
         const ai = getAiClient();
         if (ai) {
-          const result = await ai.getGenerativeModel({ model: 'gemini-3.1-flash-lite-preview' }).generateContent(`Interesting behavioral fact about ${commonName} under 20 words.`);
-          funFact = result.response.text().trim();
-          speciesFactCache[commonName] = funFact;
+          try {
+            const model = ai.getGenerativeModel({ model: 'gemini-3.1-flash-lite-preview' });
+            const result = await model.generateContent(`Interesting behavioral fact about ${commonName} under 20 words.`);
+            funFact = result.response.text().trim();
+            speciesFactCache[commonName] = funFact;
+          } catch (e) {}
         }
       }
 
@@ -146,7 +176,7 @@ function connectBirdMqtt() {
         sourceNode: payload.sourceName || 'BirdNET',
         funFact,
         imageUrl: `https://en.wikipedia.org/wiki/${encodeURIComponent(commonName)}`,
-        audioUrl: cfg.serverUrl ? `${cfg.serverUrl}/api/v2/audio/${payload.id}` : undefined
+        audioUrl: cfg.serverUrl ? `/api/birds/proxy/audio/${payload.id}?serverUrl=${encodeURIComponent(cfg.serverUrl)}` : undefined
       };
 
       birdSightings.unshift(sighting);
@@ -154,7 +184,6 @@ function connectBirdMqtt() {
       saveBirds();
       broadcastToSse({ type: 'bird_sighting', sighting });
 
-      // Daily Species Sentinel Alert
       const today = new Date().getUTCDate();
       if (lastBirdAlertReset !== today) { dailyAlertedSpecies.clear(); lastBirdAlertReset = today; }
       if (!dailyAlertedSpecies.has(commonName) && sighting.confidence > 0.6 && cfg.sendDailyAlerts) {
@@ -169,26 +198,7 @@ function connectBirdMqtt() {
 const app = express();
 app.use(express.json());
 
-app.get('/api/notifications/settings', (req, res) => res.json({ success: true, settings: persistentSettings }));
-app.post('/api/notifications/settings', (req, res) => {
-  const { settings } = req.body;
-  if (settings) {
-    const birdnetChanged = JSON.stringify(persistentSettings.birdnet) !== JSON.stringify(settings.birdnet);
-    persistentSettings = settings;
-    saveSettings();
-    if (birdnetChanged) connectBirdMqtt();
-  }
-  res.json({ success: true });
-});
-
-app.get('/api/birds/sightings', (req, res) => res.json({ success: true, sightings: birdSightings }));
-app.get('/api/birds/status', (req, res) => res.json({ success: true, status: birdMqttStatus, config: persistentSettings.birdnet }));
-app.get('/api/frigate/servers', (req, res) => res.json({ success: true, servers: persistentServers }));
-app.post('/api/frigate/servers', (req, res) => {
-  if (Array.isArray(req.body.servers)) { persistentServers = req.body.servers; saveServers(); }
-  res.json({ success: true });
-});
-
+// 1. Tides
 app.get('/api/tides/stations/search', async (req, res) => {
   const q = String(req.query.q || '').toLowerCase();
   try {
@@ -207,13 +217,191 @@ app.get('/api/tides/data/:id', async (req, res) => {
     const now = new Date();
     const from = new Date(now.getTime() - 6*3600000).toISOString();
     const to = new Date(now.getTime() + 24*3600000).toISOString();
+    const [sR, hR] = await Promise.all([
+      fetch(`https://api-iwls.dfo-mpo.gc.ca/api/v1/stations/${req.params.id}/data?timeSeriesCode=wlp&from=${from}&to=${to}`),
+      fetch(`https://api-iwls.dfo-mpo.gc.ca/api/v1/stations/${req.params.id}/data?timeSeriesCode=wlp-hilo&from=${from}&to=${to}`)
+    ]);
     const [s, h] = await Promise.all([
-      fetch(`https://api-iwls.dfo-mpo.gc.ca/api/v1/stations/${req.params.id}/data?timeSeriesCode=wlp&from=${from}&to=${to}`).then(r => r.json()),
-      fetch(`https://api-iwls.dfo-mpo.gc.ca/api/v1/stations/${req.params.id}/data?timeSeriesCode=wlp-hilo&from=${from}&to=${to}`).then(r => r.json())
+      sR.ok ? sR.json() : Promise.resolve([]),
+      hR.ok ? hR.json() : Promise.resolve([])
     ]);
     res.json({ success: true, predictions: s, highLow: h });
   } catch (e) { res.status(500).json({ error: 'Fetch failed' }); }
 });
+
+// 2. Frigate Discovery & Proxy
+app.post('/api/frigate/servers/fetch-config', async (req, res) => {
+  const { url, apiKey } = req.body;
+  if (!url) return res.status(400).send('URL required');
+  try {
+    const h: any = {}; if (apiKey) h['Authorization'] = `Bearer ${apiKey}`;
+    const baseUrl = url.replace(/\/$/, '');
+    const resp = await fetch(`${baseUrl}/api/config`, { headers: h });
+    if (!resp.ok) throw new Error(`Frigate status ${resp.status}`);
+    const config = await resp.json();
+
+    const detectedCameras = Object.entries(config.cameras || {}).map(([camId, camConfig]: [string, any]) => {
+      const w = camConfig.detect?.width || 1280;
+      const h_ = camConfig.detect?.height || 720;
+      const fps = camConfig.detect?.fps || 5;
+
+      const zones = Object.entries(camConfig.zones || {}).map(([zName, zCfg]: [string, any], idx) => ({
+        id: `zone-${camId}-${zName}`,
+        name: zName,
+        color: ['#38bdf8', '#eab308', '#ec4899', '#10b981', '#a855f7'][idx % 5],
+        points: (zCfg.coordinates || "").split(',').reduce((acc: any, val: string, i: number, arr: string[]) => {
+          if (i % 2 === 0) acc.push([parseFloat(val), parseFloat(arr[i+1])]);
+          return acc;
+        }, []),
+        objects: zCfg.objects || ['person', 'car']
+      }));
+
+      return {
+        id: camId,
+        name: camId.replace(/_/g, ' ').toUpperCase(),
+        location: `Feed: ${camId}`,
+        resolution: `${w}x${h_}`,
+        fps,
+        bitrateKbps: Math.round(w * h_ * fps * 0.0001),
+        status: 'online',
+        streamType: 'main',
+        detectEnabled: camConfig.detect?.enabled !== false,
+        recordEnabled: camConfig.record?.enabled !== false,
+        audioEnabled: Boolean(camConfig.audio?.enabled),
+        ptzCapable: Boolean(camConfig.onvif?.autotracking?.enabled || camConfig.ptz),
+        zones,
+        motionMasks: [],
+        thumbnailTheme: 'front_porch',
+        mjpegStreamUrl: `/api/frigate/proxy/stream?serverUrl=${encodeURIComponent(baseUrl)}&camera=${encodeURIComponent(camId)}&fps=${fps}&h=720`,
+        liveImageUrl: `/api/frigate/proxy/image?serverUrl=${encodeURIComponent(baseUrl)}&path=${encodeURIComponent(`/api/${camId}/latest.jpg?h=720`)}`,
+        frigate_url: baseUrl,
+        streamingMode: 'mjpeg'
+      };
+    });
+    res.json({ success: true, cameras: detectedCameras, config });
+  } catch (e: any) {
+    console.error('[Frigate Config] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/frigate/servers/fetch-events', async (req, res) => {
+  const { url, apiKey } = req.body;
+  try {
+    const h: any = {}; if (apiKey) h['Authorization'] = `Bearer ${apiKey}`;
+    const resp = await fetch(`${url.replace(/\/$/, '')}/api/events?limit=50&has_clip=1`, { headers: h });
+    const events = await resp.json();
+    const normalized = events.map((e: any) => {
+      const startSec = e.start_time || Date.now() / 1000;
+      const duration = Math.max(1, Math.round((e.end_time || startSec + 10) - startSec));
+      return {
+        id: e.id, camera: e.camera, label: e.label, score: e.top_score || 0.85,
+        startTime: Math.round(startSec * 1000), duration,
+        reviewed: false, hasSnapshot: true, hasClip: true, importance: 'alert',
+        zones: e.zones || e.current_zones || [],
+        box: { x: 0.2, y: 0.2, width: 0.5, height: 0.5 },
+        summary: `Detected ${e.label} on ${e.camera}`,
+        snapshotUrl: `/api/frigate/proxy/image?serverUrl=${encodeURIComponent(url)}&path=${encodeURIComponent(`/api/events/${e.id}/snapshot.jpg`)}`,
+        clipUrl: `/api/frigate/proxy/events/${e.id}/clip.mp4?serverUrl=${encodeURIComponent(url)}`
+      };
+    });
+    res.json({ success: true, events: normalized });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/frigate/proxy/stream', async (req, res) => {
+  const { serverUrl, camera, fps, h } = req.query;
+  if (!serverUrl || !camera) return res.status(400).send('Missing params');
+  try {
+    const streamUrl = `${(serverUrl as string).replace(/\/$/, '')}/api/${camera}?fps=${fps || 10}&h=${h || 720}`;
+    const sResp = await fetch(streamUrl);
+    res.setHeader('Content-Type', sResp.headers.get('content-type') || 'multipart/x-mixed-replace; boundary=frame');
+    if (sResp.body) {
+      const reader = (sResp.body as any).getReader();
+      const push = async () => {
+        const { done, value } = await reader.read();
+        if (done || req.destroyed) return;
+        res.write(value); push();
+      };
+      push(); req.on('close', () => reader.cancel());
+    }
+  } catch (e) { res.status(502).send('Proxy Error'); }
+});
+
+app.get('/api/frigate/proxy/image', async (req, res) => {
+  const { serverUrl, path: tP } = req.query;
+  if (!serverUrl || !tP) return res.status(400).send('Missing params');
+  try {
+    const imgResp = await fetch(`${(serverUrl as string).replace(/\/$/, '')}${tP as string}`);
+    res.setHeader('Content-Type', imgResp.headers.get('content-type') || 'image/jpeg');
+    res.send(Buffer.from(await imgResp.arrayBuffer()));
+  } catch (e) { res.status(502).send('Proxy Error'); }
+});
+
+app.get('/api/frigate/proxy/events/:id/clip.mp4', async (req, res) => {
+  const { id } = req.params; const { serverUrl } = req.query;
+  if (!serverUrl) return res.status(400).send('Missing serverUrl');
+  try {
+    const clipResp = await fetch(`${(serverUrl as string).replace(/\/$/, '')}/api/events/${id}/clip.mp4`);
+    res.setHeader('Content-Type', 'video/mp4'); res.setHeader('Content-Disposition', 'inline');
+    if (clipResp.body) {
+      const patcher = new HevcPatchStream();
+      Readable.from(clipResp.body as any).pipe(patcher).pipe(res);
+    }
+  } catch (e) { res.status(502).send('Proxy Error'); }
+});
+
+app.get('/api/frigate/stats', async (req, res) => {
+  const { serverUrl, apiKey } = req.query;
+  if (!serverUrl) return res.status(400).send('URL required');
+  try {
+    const h: any = {}; if (apiKey) h['Authorization'] = `Bearer ${apiKey}`;
+    const resp = await fetch(`${(serverUrl as string).replace(/\/$/, '')}/api/stats`, { headers: h });
+    const data = await resp.json(); res.json({ success: true, telemetry: data });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 3. BirdNET Proxies
+app.get('/api/birds/proxy/audio/:id', async (req, res) => {
+  const { id } = req.params; const { serverUrl } = req.query;
+  if (!serverUrl) return res.status(400).send('Missing serverUrl');
+  try {
+    const baseUrl = (serverUrl as string).replace(/\/$/, '');
+    let aResp = await fetch(`${baseUrl}/api/v2/audio/${id}`);
+    if (!aResp.ok) aResp = await fetch(`${baseUrl}/api/v2/media/audio?id=${id}`);
+    if (!aResp.ok) return res.status(404).send('Audio not found');
+    res.setHeader('Content-Type', 'audio/wav');
+    res.send(Buffer.from(await aResp.arrayBuffer()));
+  } catch (e) { res.status(502).send('Proxy Error'); }
+});
+
+app.get('/api/birds/proxy/live-audio', (req, res) => {
+  const { url } = req.query; if (!url) return res.status(400).send('URL required');
+  res.setHeader('Content-Type', 'audio/mpeg'); res.setHeader('Connection', 'keep-alive');
+  const ffmpeg = spawn('ffmpeg', ['-loglevel', 'error', '-rtsp_transport', 'tcp', '-i', url as string, '-vn', '-acodec', 'libmp3lame', '-ab', '128k', '-ar', '44100', '-f', 'mp3', 'pipe:1']);
+  ffmpeg.stdout.pipe(res);
+  ffmpeg.on('error', (e) => console.error('[FFmpeg] Error:', e.message));
+  req.on('close', () => { console.log('[FFmpeg] Stopping live proxy'); ffmpeg.kill('SIGKILL'); });
+});
+
+// 4. Settings & Servers Sync
+app.get('/api/notifications/settings', (req, res) => res.json({ success: true, settings: persistentSettings }));
+app.post('/api/notifications/settings', (req, res) => {
+  const { settings } = req.body; if (settings) {
+    const bC = JSON.stringify(persistentSettings.birdnet) !== JSON.stringify(settings.birdnet);
+    persistentSettings = settings; saveSettings(); if (bC) connectBirdMqtt();
+  }
+  res.json({ success: true });
+});
+
+app.get('/api/frigate/servers', (req, res) => res.json({ success: true, servers: persistentServers }));
+app.post('/api/frigate/servers', (req, res) => {
+  if (Array.isArray(req.body.servers)) { persistentServers = req.body.servers; saveServers(); }
+  res.json({ success: true });
+});
+
+app.get('/api/birds/sightings', (req, res) => res.json({ success: true, sightings: birdSightings }));
+app.get('/api/birds/status', (req, res) => res.json({ success: true, status: birdMqttStatus, config: persistentSettings.birdnet }));
 
 app.get('/api/frigate/mqtt/stream', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -224,10 +412,9 @@ app.get('/api/frigate/mqtt/stream', (req, res) => {
   req.on('close', () => sseClients.delete(res));
 });
 
-// --- SERVER BOOTSTRAP ---
+// --- SERVER START ---
 async function start() {
   if (persistentSettings.birdnet?.enabled) connectBirdMqtt();
-
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static('dist'));
     app.get('*', (req, res) => res.sendFile(path.resolve(__dirname, 'dist', 'index.html')));
@@ -235,7 +422,6 @@ async function start() {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   }
-
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => console.log(`🚀 Guardian Active on port ${PORT}`));
 }

@@ -8,11 +8,9 @@ import { Readable, Transform } from 'stream';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
 
+// --- CONFIG ---
 dotenv.config();
-
-// Standard Node helpers (Safe for CJS bundling)
-const __dirname_base = path.resolve();
-
+const ROOT_DIR = process.cwd();
 const DATA_DIR = process.env.DATA_DIR || path.join(process.env.HOME || '/tmp', '.frigate-guardian');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
@@ -56,9 +54,6 @@ let persistentSettings: any = {
 let birdSightings: any[] = [];
 let persistentServers: any[] = [];
 let speciesFactCache: Record<string, string> = {};
-let dailyAlertedSpecies = new Set<string>();
-let lastBirdAlertReset = new Date().getUTCDate();
-const parkedVehicles = new Map<string, { x: number, y: number, timestamp: number }>();
 const sseClients = new Set<any>();
 
 // --- PERSISTENCE ---
@@ -66,7 +61,7 @@ try {
   if (fs.existsSync(SETTINGS_FILE)) persistentSettings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
   if (fs.existsSync(BIRD_SIGHTINGS_FILE)) birdSightings = JSON.parse(fs.readFileSync(BIRD_SIGHTINGS_FILE, 'utf-8'));
   if (fs.existsSync(SERVERS_FILE)) persistentServers = JSON.parse(fs.readFileSync(SERVERS_FILE, 'utf-8'));
-} catch (err) { console.error('[Storage] Load failed:', err); }
+} catch (err) {}
 
 function saveSettings() { fs.writeFileSync(SETTINGS_FILE, JSON.stringify(persistentSettings, null, 2)); }
 function saveBirds() { fs.writeFileSync(BIRD_SIGHTINGS_FILE, JSON.stringify(birdSightings.slice(0, 1000), null, 2)); }
@@ -82,12 +77,6 @@ function getAiClient() {
 function broadcastToSse(data: any) {
   const msg = `data: ${JSON.stringify(data)}\n\n`;
   sseClients.forEach(c => { try { c.write(msg); } catch (e) { sseClients.delete(c); } });
-}
-
-async function dispatchNotification(event: any, settings: any) {
-  if (!event || !settings) return { success: false };
-  console.log(`[Alert] Dispatching for ${event.label} on ${event.camera}`);
-  return { success: true, dispatched: ['simulation'] };
 }
 
 // --- MQTT (BIRDNET) ---
@@ -230,13 +219,15 @@ app.get('/api/frigate/mqtt/stream', (req, res) => {
   sseClients.add(res); req.on('close', () => sseClients.delete(res));
 });
 
-// App Startup
+app.get('/api/birds/status', (req, res) => res.json({ success: true, status: birdMqttStatus, config: persistentSettings.birdnet }));
+
+// Static Assets & Vite Integration
 const PORT = process.env.PORT || 3000;
 if (persistentSettings.birdnet?.enabled) connectBirdMqtt();
 
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static('dist'));
-  app.get('*', (req, res) => res.sendFile(path.resolve(__dirname_base, 'dist', 'index.html')));
+  app.get('*', (req, res) => res.sendFile(path.join(ROOT_DIR, 'dist', 'index.html')));
   app.listen(PORT, () => console.log(`🚀 Active on ${PORT}`));
 } else {
   createViteServer({ server: { middlewareMode: true }, appType: 'spa' }).then(vite => {

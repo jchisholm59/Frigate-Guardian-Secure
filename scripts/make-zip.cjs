@@ -1,6 +1,9 @@
 const fs = require('fs');
 const path = require('path');
-const archiver = require('archiver');
+const archiverLib = require('archiver');
+
+// Robust interop for different module systems
+const archiver = (typeof archiverLib === 'function') ? archiverLib : archiverLib.default;
 
 const rootDir = path.resolve(__dirname, '..');
 const publicDir = path.join(rootDir, 'public');

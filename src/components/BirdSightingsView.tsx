@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
-  const [isListening, setIsMuted] = useState(true);
+  const [isActive, setIsActive] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const analyzerRef = useRef<AnalyserNode | null>(null);
@@ -28,18 +28,13 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
 
   const proxyUrl = `/api/birds/proxy/live-audio?url=${encodeURIComponent(rtspUrl)}`;
 
-  useEffect(() => {
-    // When listening state changes, log it to the console for debugging
-    if (!isListening) {
-      console.log(`[Birds] Attempting to listen to live audio: ${proxyUrl}`);
-    }
-  }, [isListening, proxyUrl]);
-
   const toggleListening = () => {
-    if (isListening) {
-      // START LISTENING
-      setIsMuted(false);
+    const nextActive = !isActive;
+    setIsActive(nextActive);
 
+    if (nextActive) {
+      // STARTING
+      console.log('[Birds] Activating Live Yard Sentinel...');
       if (!audioContextRef.current) {
         const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
         audioContextRef.current = new AudioContextClass();
@@ -50,14 +45,14 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
       }
 
       if (audioRef.current) {
-        audioRef.current.load(); // Force fresh stream connection
-        audioRef.current.play().catch(err => console.warn('[Birds] Playback blocked:', err));
+        audioRef.current.load();
+        audioRef.current.play().catch(err => console.warn('[Birds] Live playback blocked:', err));
       }
 
       setupAnalyzer();
     } else {
-      // STOP LISTENING
-      setIsMuted(true);
+      // STOPPING
+      console.log('[Birds] Deactivating Live Yard Sentinel.');
       if (audioRef.current) {
         audioRef.current.pause();
       }
@@ -68,16 +63,19 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
   const setupAnalyzer = () => {
     if (!audioRef.current || !audioContextRef.current) return;
 
-    if (!analyzerRef.current) {
-      const source = audioContextRef.current.createMediaElementSource(audioRef.current);
-      const analyzer = audioContextRef.current.createAnalyser();
-      analyzer.fftSize = 256;
-      source.connect(analyzer);
-      analyzer.connect(audioContextRef.current.destination);
-      analyzerRef.current = analyzer;
+    try {
+      if (!analyzerRef.current) {
+        const source = audioContextRef.current.createMediaElementSource(audioRef.current);
+        const analyzer = audioContextRef.current.createAnalyser();
+        analyzer.fftSize = 128; // Smaller for punchier bars
+        source.connect(analyzer);
+        analyzer.connect(audioContextRef.current.destination);
+        analyzerRef.current = analyzer;
+      }
+      drawSpectrogram();
+    } catch (err) {
+      console.warn('[Birds] Could not setup audio analyzer (might be already connected):', err);
     }
-
-    drawSpectrogram();
   };
 
   const drawSpectrogram = () => {
@@ -91,25 +89,32 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
     const dataArray = new Uint8Array(bufferLength);
 
     const render = () => {
+      if (!isActive) return;
       animationRef.current = requestAnimationFrame(render);
       analyzerRef.current!.getByteFrequencyData(dataArray);
 
-      ctx.fillStyle = '#0f172a'; // matches bg
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // Clear with transparency
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const barWidth = (canvas.width / bufferLength) * 2.5;
+      const barWidth = (canvas.width / bufferLength) * 2;
       let barHeight;
       let x = 0;
 
       for (let i = 0; i < bufferLength; i++) {
         barHeight = (dataArray[i] / 255) * canvas.height;
 
-        // Color based on frequency
-        const hue = (i / bufferLength) * 360;
-        ctx.fillStyle = `hsla(${hue}, 70%, 50%, 0.8)`;
-        ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+        // Gradient color based on frequency
+        const hue = 200 + (i / bufferLength) * 60; // Blue to Cyan range
+        ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.9)`;
 
-        x += barWidth + 1;
+        // Draw bars with rounded tops
+        const r = 3;
+        const bh = Math.max(r * 2, barHeight);
+        ctx.beginPath();
+        ctx.roundRect(x, canvas.height - bh, barWidth - 2, bh, r);
+        ctx.fill();
+
+        x += barWidth;
       }
     };
 
@@ -140,7 +145,7 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
             </div>
 
             <div className="flex items-center gap-2">
-              {!isListening && (
+              {isActive && (
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
                   <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Live Monitoring</span>
@@ -149,19 +154,19 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
               <button
                 onClick={toggleListening}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
-                  isListening
+                  !isActive
                     ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:bg-blue-500'
                     : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700'
                 }`}
               >
-                {isListening ? <Volume2 className="w-4 h-4" /> : <X className="w-4 h-4" />}
-                <span>{isListening ? 'Listen Live' : 'Mute Sentinel'}</span>
+                {!isActive ? <Volume2 className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                <span>{!isActive ? 'Listen Live' : 'Mute Sentinel'}</span>
               </button>
             </div>
           </div>
 
           <div className="relative flex-1 min-h-[120px] bg-slate-950 rounded-2xl border border-slate-800/50 overflow-hidden flex items-center justify-center">
-            {isListening ? (
+            {!isActive ? (
               <div className="flex flex-col items-center gap-2 text-slate-600">
                 <AudioWaveform className="w-8 h-8 opacity-20" />
                 <span className="text-[10px] font-bold uppercase tracking-widest">Monitor Standby</span>
@@ -178,7 +183,7 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
             <audio
               ref={audioRef}
               src={proxyUrl}
-              muted={isListening}
+              muted={!isActive}
               autoPlay
               crossOrigin="anonymous"
             />
@@ -343,7 +348,11 @@ export const BirdSightingsView: React.FC<BirdSightingsViewProps> = ({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredSightings.map((s) => (
-            <BirdSightingCard key={s.id} sighting={s} />
+            <BirdSightingCard
+              key={s.id}
+              sighting={s}
+              serverUrl={config?.serverUrl}
+            />
           ))}
         </div>
       )}
@@ -351,9 +360,17 @@ export const BirdSightingsView: React.FC<BirdSightingsViewProps> = ({
   );
 };
 
-const BirdSightingCard: React.FC<{ sighting: BirdSighting }> = ({ sighting }) => {
+const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }> = ({
+  sighting,
+  serverUrl
+}) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
+
+  // Fallback audio URL if missing (for older sightings before config was set)
+  const effectiveAudioUrl = sighting.audioUrl || (serverUrl && sighting.id && !sighting.id.startsWith('bird-')
+    ? `/api/birds/proxy/audio/${sighting.id}?serverUrl=${encodeURIComponent(serverUrl)}`
+    : null);
 
   const formattedTime = new Date(sighting.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
@@ -367,14 +384,33 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting }> = ({ sighting }) =>
 
   const toggleAudio = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!audioRef.current) return;
+    console.log(`[Birds] Toggling audio playback for: ${sighting.commonName} (${sighting.id})`);
+
+    if (!audioRef.current) {
+      console.warn('[Birds] Audio element not found');
+      return;
+    }
+
+    if (!effectiveAudioUrl) {
+      console.warn('[Birds] No audio URL available for this sighting');
+      return;
+    }
 
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play();
-      setIsPlaying(true);
+      // Force reload to ensure the proxy is hit
+      if (audioRef.current.src !== window.location.origin + effectiveAudioUrl) {
+        audioRef.current.load();
+      }
+
+      audioRef.current.play()
+        .then(() => setIsPlaying(true))
+        .catch(err => {
+          console.error('[Birds] Playback failed:', err);
+          setIsPlaying(false);
+        });
     }
   };
 
@@ -407,8 +443,8 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting }> = ({ sighting }) =>
           </div>
         </div>
 
-        {/* Play Button Overlay (if audioUrl exists) */}
-        {sighting.audioUrl && (
+        {/* Play Button Overlay */}
+        {effectiveAudioUrl && (
           <div
             onClick={toggleAudio}
             className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
@@ -418,7 +454,7 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting }> = ({ sighting }) =>
             </div>
             <audio
               ref={audioRef}
-              src={sighting.audioUrl}
+              src={effectiveAudioUrl}
               onEnded={() => setIsPlaying(false)}
               onPause={() => setIsPlaying(false)}
             />

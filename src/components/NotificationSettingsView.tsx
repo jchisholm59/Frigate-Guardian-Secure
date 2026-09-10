@@ -1284,11 +1284,6 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
   const [searchResults, setSearchResults] = useState<TidalStation[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // Debug log to catch issues in production logs
-  useEffect(() => {
-    console.log('[Tides] Settings Section Mounted. Config:', config);
-  }, [config]);
-
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     setIsSearching(true);
@@ -1341,10 +1336,10 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
         <div className="space-y-3">
           <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Your Monitoring Sites</h5>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {currentStations.map((s) => {
+            {currentStations.map((s, idx) => {
               if (!s) return null;
               return (
-                <div key={s.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-800">
+                <div key={s.id || `station-${idx}`} className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-800">
                   <div>
                     <p className="text-xs font-black text-white uppercase">{s.name || 'Unknown Station'}</p>
                     <p className="text-[9px] font-mono text-cyan-500">{s.code || 'N/A'}</p>
@@ -1384,10 +1379,10 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
 
           {searchResults.length > 0 && (
             <div className="mt-4 max-h-48 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-slate-800">
-              {searchResults.map((s) => {
+              {searchResults.map((s, idx) => {
                 if (!s) return null;
                 return (
-                  <div key={s.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/40 hover:border-cyan-500/30 transition-all">
+                  <div key={s.id || `result-${idx}`} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/40 hover:border-cyan-500/30 transition-all">
                     <div>
                       <p className="text-xs font-bold text-slate-200">{s.name}</p>
                       <p className="text-[9px] text-slate-500 font-mono">{s.code} • {s.province}</p>
@@ -1403,8 +1398,21 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
         </div>
       </div>
     );
-  } catch (err) {
+  } catch (err: any) {
     console.error('[Tides] Render crash:', err);
-    return <div className="p-6 text-red-500 font-mono text-xs bg-red-950/20 rounded-2xl">Configuration Interface Error. Check console.</div>;
+    return (
+      <div className="p-6 bg-red-950/20 border border-red-500/40 rounded-2xl">
+        <h4 className="text-red-400 font-black uppercase text-xs mb-2">Configuration Interface Error</h4>
+        <pre className="text-[10px] font-mono text-red-300 whitespace-pre-wrap bg-black/40 p-4 rounded-xl">
+          {err.stack || err.message || 'Unknown render exception'}
+        </pre>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-4 px-4 py-2 bg-red-600 text-white text-[10px] font-black uppercase rounded-lg"
+        >
+          Reload Dashboard
+        </button>
+      </div>
+    );
   }
 };

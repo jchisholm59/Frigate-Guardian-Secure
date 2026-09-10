@@ -1284,6 +1284,11 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
   const [searchResults, setSearchResults] = useState<TidalStation[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  // Debug log to catch issues in production logs
+  useEffect(() => {
+    console.log('[Tides] Settings Section Mounted. Config:', config);
+  }, [config]);
+
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     setIsSearching(true);
@@ -1303,89 +1308,103 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
     }
   };
 
-  const currentStations = Array.isArray(config?.stations) ? config!.stations : [];
+  // Ultra-defensive array extraction
+  const currentStations = (config && Array.isArray(config.stations)) ? config.stations : [];
 
   const addStation = (station: TidalStation) => {
-    if (currentStations.some(s => s.id === station.id)) return;
+    if (!station || !station.id) return;
+    if (currentStations.some(s => s && s.id === station.id)) return;
     onUpdate({ stations: [...currentStations, station] });
   };
 
   const removeStation = (id: string) => {
-    onUpdate({ stations: currentStations.filter(s => s.id !== id) });
+    if (!id) return;
+    onUpdate({ stations: currentStations.filter(s => s && s.id !== id) });
   };
 
-  return (
-    <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-6 shadow-md animate-in fade-in duration-300">
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-cyan-400">
-            <Waves className="w-5 h-5" />
-          </div>
-          <div>
-            <h4 className="text-sm font-black uppercase tracking-tight text-white">Tidal Intelligence Config</h4>
-            <p className="text-xs text-slate-400">Add stations to track real-time water levels and tidal predictions.</p>
+  try {
+    return (
+      <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-6 shadow-md animate-in fade-in duration-300">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-cyan-400">
+              <Waves className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-black uppercase tracking-tight text-white">Tidal Intelligence Config</h4>
+              <p className="text-xs text-slate-400">Add stations to track real-time water levels and tidal predictions.</p>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Selected Stations */}
-      <div className="space-y-3">
-        <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Your Monitoring Sites</h5>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {currentStations.map((s) => (
-            <div key={s.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-800">
-              <div>
-                <p className="text-xs font-black text-white uppercase">{s.name}</p>
-                <p className="text-[9px] font-mono text-cyan-500">{s.code}</p>
-              </div>
-              <button onClick={() => removeStation(s.id)} className="p-1.5 rounded-lg text-slate-600 hover:text-rose-500 hover:bg-rose-500/10 transition-all">
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+        {/* Selected Stations */}
+        <div className="space-y-3">
+          <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Your Monitoring Sites</h5>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {currentStations.map((s) => {
+              if (!s) return null;
+              return (
+                <div key={s.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-800">
+                  <div>
+                    <p className="text-xs font-black text-white uppercase">{s.name || 'Unknown Station'}</p>
+                    <p className="text-[9px] font-mono text-cyan-500">{s.code || 'N/A'}</p>
+                  </div>
+                  <button onClick={() => removeStation(s.id)} className="p-1.5 rounded-lg text-slate-600 hover:text-rose-500 hover:bg-rose-500/10 transition-all">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+            {currentStations.length === 0 && (
+              <p className="text-[10px] text-slate-600 italic py-2">No stations added. Use the search below.</p>
+            )}
+          </div>
+        </div>
+
+        {/* Search Section */}
+        <div className="space-y-3 pt-4 border-t border-slate-800">
+          <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Find Canadian Tidal Stations</h5>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Search name or code (e.g. 'Halifax' or '00490')..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-cyan-500"
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            />
+            <button
+              onClick={handleSearch}
+              disabled={isSearching}
+              className="px-4 py-2 rounded-xl bg-cyan-600 text-white text-xs font-black uppercase tracking-widest hover:bg-cyan-500 disabled:opacity-50"
+            >
+              {isSearching ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+
+          {searchResults.length > 0 && (
+            <div className="mt-4 max-h-48 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-slate-800">
+              {searchResults.map((s) => {
+                if (!s) return null;
+                return (
+                  <div key={s.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/40 hover:border-cyan-500/30 transition-all">
+                    <div>
+                      <p className="text-xs font-bold text-slate-200">{s.name}</p>
+                      <p className="text-[9px] text-slate-500 font-mono">{s.code} • {s.province}</p>
+                    </div>
+                    <button onClick={() => addStation(s)} className="p-1.5 rounded-lg bg-cyan-600/10 text-cyan-400 hover:bg-cyan-600 hover:text-white transition-all">
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-          ))}
-          {currentStations.length === 0 && (
-            <p className="text-[10px] text-slate-600 italic py-2">No stations added. Use the search below.</p>
           )}
         </div>
       </div>
-
-      {/* Search Section */}
-      <div className="space-y-3 pt-4 border-t border-slate-800">
-        <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Find Canadian Tidal Stations</h5>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            placeholder="Search name or code (e.g. 'Halifax' or '00490')..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-cyan-500"
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-          />
-          <button
-            onClick={handleSearch}
-            disabled={isSearching}
-            className="px-4 py-2 rounded-xl bg-cyan-600 text-white text-xs font-black uppercase tracking-widest hover:bg-cyan-500 disabled:opacity-50"
-          >
-            {isSearching ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-          </button>
-        </div>
-
-        {searchResults.length > 0 && (
-          <div className="mt-4 max-h-48 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-slate-800">
-            {searchResults.map((s) => (
-              <div key={s.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/40 hover:border-cyan-500/30 transition-all">
-                <div>
-                  <p className="text-xs font-bold text-slate-200">{s.name}</p>
-                  <p className="text-[9px] text-slate-500 font-mono">{s.code} • {s.province}</p>
-                </div>
-                <button onClick={() => addStation(s)} className="p-1.5 rounded-lg bg-cyan-600/10 text-cyan-400 hover:bg-cyan-600 hover:text-white transition-all">
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+    );
+  } catch (err) {
+    console.error('[Tides] Render crash:', err);
+    return <div className="p-6 text-red-500 font-mono text-xs bg-red-950/20 rounded-2xl">Configuration Interface Error. Check console.</div>;
+  }
 };

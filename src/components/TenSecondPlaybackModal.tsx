@@ -39,6 +39,7 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
   const [speed, setSpeed] = useState<number>(1);
   const [isLooping, setIsLooping] = useState<boolean>(true);
   const [showBox, setShowBox] = useState<boolean>(true);
+  const [videoError, setVideoError] = useState<boolean>(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -47,28 +48,36 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
     if (!isOpen) {
       setIsPlaying(false);
       setCurrentTime(0);
+      setVideoError(false);
       return;
     }
     setIsPlaying(true);
     setCurrentTime(0);
+    setVideoError(false);
   }, [isOpen, event]);
 
   // Video element sync
   useEffect(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || videoError) return;
 
     video.playbackRate = speed;
     if (isPlaying) {
-      video.play().catch(() => {});
+      video.play().catch(() => {
+        // Handle auto-play block or other interaction errors
+      });
     } else {
       video.pause();
     }
-  }, [isPlaying, speed]);
+  }, [isPlaying, speed, videoError]);
 
   // Simulated 10-second canvas playback loop if no real video or in simulation
   useEffect(() => {
     if (!isOpen || !event) return;
+
+    // IF we have a working video, don't run the manual time increment loop
+    // But still allow the canvas to render if no videoUrl or videoError
+    const useSimulation = !event.clipUrl || videoError;
 
     let lastTimestamp = performance.now();
 
@@ -76,7 +85,7 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
       const deltaSec = ((now - lastTimestamp) / 1000) * speed;
       lastTimestamp = now;
 
-      if (isPlaying) {
+      if (useSimulation && isPlaying) {
         setCurrentTime((prev) => {
           let next = prev + deltaSec;
           if (next >= 10) {
@@ -91,12 +100,14 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
         });
       }
 
-      // Render canvas scene at currentTime
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          drawPlaybackScene(ctx, canvas.width, canvas.height, event, currentTime, showBox);
+      // Render canvas scene if we're in simulation mode
+      if (useSimulation) {
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            drawPlaybackScene(ctx, canvas.width, canvas.height, event, currentTime, showBox);
+          }
         }
       }
 
@@ -108,7 +119,7 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [isOpen, event, isPlaying, speed, isLooping, currentTime, showBox]);
+  }, [isOpen, event, isPlaying, speed, isLooping, showBox, videoError, currentTime]);
 
   if (!isOpen || !event) return null;
 
@@ -161,7 +172,7 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
 
         {/* Video / Canvas Playback Window */}
         <div className="relative bg-black aspect-video max-h-[500px] flex items-center justify-center overflow-hidden select-none">
-          {event.clipUrl ? (
+          {event.clipUrl && !videoError ? (
             <video
               ref={videoRef}
               src={event.clipUrl}
@@ -172,7 +183,8 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
                 if (videoRef.current) setCurrentTime(videoRef.current.currentTime);
               }}
               onError={() => {
-                // Fallback to canvas playback if video stream is not available
+                console.error('[Playback] Video source failed to load');
+                setVideoError(true);
               }}
             />
           ) : (
@@ -182,6 +194,17 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
               height={450}
               className="w-full h-full object-contain bg-[#0D0E10]"
             />
+          )}
+
+          {/* Video Error Message */}
+          {videoError && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-950/60 backdrop-blur-sm p-6 text-center">
+              <Shield className="w-12 h-12 text-amber-500 mb-3 opacity-50" />
+              <div className="text-white font-black uppercase tracking-widest text-sm mb-1">Stream Unavailable</div>
+              <div className="text-slate-400 text-[10px] uppercase font-bold max-w-[240px]">
+                Frigate Host is unreachable or clip is not ready. Showing AI simulation instead.
+              </div>
+            </div>
           )}
 
           {/* Real-time Bounding Box & HUD overlay */}

@@ -1249,36 +1249,33 @@ Return a JSON object with:
   });
 
   // Proxy video clips (with HTTP 206 Partial Content range seeking for 10-second scrubber)
-  app.get('/api/frigate/proxy/clip', async (req, res) => {
+  app.get('/api/frigate/proxy/clip', (req, res) => {
     const { serverUrl, eventId } = req.query;
     if (!serverUrl || !eventId) {
       return res.status(400).send('Missing serverUrl or eventId');
     }
 
-    try {
-      const fullUrl = `${(serverUrl as string).replace(/\/$/, '')}/api/events/${eventId}/clip.mp4`;
-      console.log(`[Clip Proxy] Fetching clip from: ${fullUrl}`);
-      const fetchHeaders: Record<string, string> = {};
-      if (req.headers.range) {
-        fetchHeaders['Range'] = req.headers.range;
-      }
+    const fullUrl = `${(serverUrl as string).replace(/\/$/, '')}/api/events/${eventId}/clip.mp4`;
+    const requester = fullUrl.startsWith('https') ? https : http;
 
-      const clipResp = await fetch(fullUrl, { headers: fetchHeaders });
-      if (!clipResp.ok && clipResp.status !== 206) {
-        return res.status(clipResp.status).send('Clip not found on Frigate host');
-      }
+    console.log(`[Clip Proxy] Piping event clip from: ${fullUrl}`);
 
-      res.status(clipResp.status);
-      clipResp.headers.forEach((val, key) => {
-        res.setHeader(key, val);
-      });
+    const options = {
+      headers: {} as Record<string, string>
+    };
 
-      const arrayBuffer = await clipResp.arrayBuffer();
-      res.send(Buffer.from(arrayBuffer));
-    } catch (err: any) {
-      console.error('Clip proxy error:', err);
-      res.status(502).send('Error proxying event clip');
+    if (req.headers.range) {
+      options.headers['Range'] = req.headers.range;
     }
+
+    requester.get(fullUrl, options, (remoteRes) => {
+      // Forward status and all headers (including Content-Range and Accept-Ranges)
+      res.writeHead(remoteRes.statusCode || 200, remoteRes.headers);
+      remoteRes.pipe(res);
+    }).on('error', (err) => {
+      console.error(`[Clip Proxy] Error proxying clip: ${err.message}`);
+      if (!res.headersSent) res.status(502).send('Error proxying event clip');
+    });
   });
 
   // Test connection to live Frigate NVR instance (backward compatibility)

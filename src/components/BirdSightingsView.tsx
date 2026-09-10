@@ -28,18 +28,21 @@ let sharedAnalyzer: AnalyserNode | null = null;
 
 const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
   const [isActive, setIsActive] = useState(false);
+  const [streamUrl, setStreamUrl] = useState<string>('');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
 
-  const proxyUrl = `/api/birds/proxy/live-audio?url=${encodeURIComponent(rtspUrl)}`;
-
   const toggleListening = () => {
-    const nextActive = !isActive;
-    setIsActive(nextActive);
-
-    if (nextActive) {
+    if (!isActive) {
+      // STARTING
       console.log('[Birds] Activating Live Yard Sentinel...');
+
+      // Prevent browser from trying to load stream before we're ready
+      const url = `/api/birds/proxy/live-audio?url=${encodeURIComponent(rtspUrl)}&t=${Date.now()}`;
+      setStreamUrl(url);
+      setIsActive(true);
+
       if (!sharedAudioCtx) {
         const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
         sharedAudioCtx = new AudioContextClass();
@@ -49,19 +52,31 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
         sharedAudioCtx.resume();
       }
 
-      if (audioRef.current) {
-        audioRef.current.load();
-        audioRef.current.play().catch(err => console.warn('[Birds] Live playback blocked:', err));
-        setupAnalyzer();
-      }
+      // Audio tag won't have src yet, we need to wait for state update
     } else {
+      // STOPPING
       console.log('[Birds] Deactivating Live Yard Sentinel.');
+      setStreamUrl('');
+      setIsActive(false);
       if (audioRef.current) {
         audioRef.current.pause();
       }
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     }
   };
+
+  // Setup analyzer when audio element is ready with source
+  useEffect(() => {
+    if (isActive && audioRef.current && sharedAudioCtx && streamUrl) {
+      const handleCanPlay = () => {
+        setupAnalyzer();
+        audioRef.current?.play().catch(err => console.warn('[Birds] Live playback blocked:', err));
+      };
+
+      audioRef.current.addEventListener('canplay', handleCanPlay);
+      return () => audioRef.current?.removeEventListener('canplay', handleCanPlay);
+    }
+  }, [isActive, streamUrl]);
 
   const setupAnalyzer = () => {
     if (!audioRef.current || !sharedAudioCtx) return;
@@ -76,7 +91,7 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
       }
       startVisualization();
     } catch (err) {
-      // source might already be connected, just start drawing
+      // source might already be connected
       startVisualization();
     }
   };
@@ -102,26 +117,17 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
 
       for (let i = 0; i < bufferLength; i++) {
         const barHeight = (dataArray[i] / 255) * canvas.height;
-
-        // "Electric Blue" Gradient
         const hue = 190 + (i / bufferLength) * 40;
         ctx.fillStyle = `hsla(${hue}, 100%, 50%, 0.8)`;
-
-        // Draw bars with rounded tops
         const r = 4;
         const h = Math.max(r * 2, barHeight);
         ctx.beginPath();
-        if (ctx.roundRect) {
-          ctx.roundRect(x, canvas.height - h, barWidth - 2, h, r);
-        } else {
-          ctx.rect(x, canvas.height - h, barWidth - 2, h);
-        }
+        if (ctx.roundRect) ctx.roundRect(x, canvas.height - h, barWidth - 2, h, r);
+        else ctx.rect(x, canvas.height - h, barWidth - 2, h);
         ctx.fill();
-
         x += barWidth;
       }
     };
-
     render();
   };
 
@@ -132,12 +138,12 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
   }, []);
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl animate-in slide-in-from-bottom duration-500 mb-8">
+    <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl mb-8 transition-all duration-500">
       <div className="flex flex-col md:flex-row h-full">
         <div className="flex-1 p-6 flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg shadow-blue-600/20">
+              <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center shadow-lg">
                 <AudioWaveform className="w-5 h-5 text-white" />
               </div>
               <div>
@@ -148,7 +154,7 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
 
             <div className="flex items-center gap-2">
               {isActive && (
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/30">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
                   <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Active Stream</span>
                 </div>
@@ -156,13 +162,13 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
               <button
                 onClick={toggleListening}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md ${
-                  !isActive
-                    ? 'bg-blue-600 text-white hover:bg-blue-500'
-                    : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700'
+                  isActive
+                    ? 'bg-slate-800 text-white border border-slate-700'
+                    : 'bg-blue-600 text-white hover:bg-blue-500'
                 }`}
               >
-                {!isActive ? <Volume2 className="w-4 h-4" /> : <X className="w-4 h-4" />}
-                <span>{!isActive ? 'Listen Live' : 'Mute Sentinel'}</span>
+                {isActive ? <X className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                <span>{isActive ? 'Mute Sentinel' : 'Listen Live'}</span>
               </button>
             </div>
           </div>
@@ -174,21 +180,12 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
                 <span className="text-[10px] font-bold uppercase tracking-widest">Monitor Standby</span>
               </div>
             ) : (
-              <canvas
-                ref={canvasRef}
-                width={800}
-                height={128}
-                className="w-full h-full object-cover"
-              />
+              <canvas ref={canvasRef} width={800} height={128} className="w-full h-full object-cover" />
             )}
 
-            <audio
-              ref={audioRef}
-              src={proxyUrl}
-              muted={!isActive}
-              autoPlay
-              crossOrigin="anonymous"
-            />
+            {streamUrl && (
+              <audio ref={audioRef} src={streamUrl} crossOrigin="anonymous" />
+            )}
           </div>
         </div>
 
@@ -203,10 +200,8 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
               <p className="text-xs font-bold text-slate-300">RTSP &rarr; MP3 Proxy</p>
             </div>
           </div>
-          <div className="p-3 rounded-xl bg-blue-600/5 border border-blue-500/10">
-            <p className="text-[9px] text-slate-500 leading-relaxed font-medium italic text-center">
-              Direct live audio verification from your yard microphone.
-            </p>
+          <div className="p-3 rounded-xl bg-blue-600/5 border border-blue-500/10 text-center">
+            <p className="text-[9px] text-slate-500 font-medium italic">Verified yard monitoring active.</p>
           </div>
         </div>
       </div>
@@ -263,7 +258,7 @@ const IntelligenceReportModal: React.FC<{ isOpen: boolean; onClose: () => void; 
                 <div key={idx} className="flex items-center justify-between p-4 rounded-2xl bg-slate-950/40 border border-slate-800 hover:border-blue-500/30 transition-colors">
                   <div>
                     <p className="text-sm font-black text-white uppercase tracking-tight">{sp.common}</p>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">{sp.scientific}</p>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">{sp.scientific}</p>
                     <p className="text-[9px] text-slate-600 mt-1 uppercase font-black">Last Heard: {new Date(sp.lastSeen).toLocaleTimeString()}</p>
                   </div>
                   <div className="text-right">
@@ -303,7 +298,7 @@ export const BirdSightingsView: React.FC<{ sightings: BirdSighting[]; config?: B
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-3">
-            <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-500/30 text-blue-400">
+            <div className="p-2 rounded-xl bg-blue-950/40 border border-blue-500/30 text-blue-400">
               <Bird className="w-5 h-5" />
             </div>
             <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Sightings Count</h4>
@@ -314,7 +309,7 @@ export const BirdSightingsView: React.FC<{ sightings: BirdSighting[]; config?: B
 
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-3">
-            <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-400">
+            <div className="p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-400">
               <BarChart3 className="w-5 h-5" />
             </div>
             <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Unique Species</h4>
@@ -326,7 +321,7 @@ export const BirdSightingsView: React.FC<{ sightings: BirdSighting[]; config?: B
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-400">
+              <div className="p-2 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-400">
                 <Filter className="w-5 h-5" />
               </div>
               <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Filter Strength</h4>
@@ -386,7 +381,6 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
   const [localFact, setLocalFact] = useState<string | undefined>(sighting.funFact);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Logic to determine the best audio source
   const effectiveAudioUrl = sighting.audioUrl || (serverUrl && sighting.id && !String(sighting.id).startsWith('bird-')
     ? `/api/birds/proxy/audio/${sighting.id}?serverUrl=${encodeURIComponent(serverUrl)}`
     : null);
@@ -395,15 +389,18 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
     e.preventDefault();
     e.stopPropagation();
 
-    console.log('[Birds] Playback Event Triggered');
     if (!audioRef.current || !effectiveAudioUrl) return;
 
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
+      console.log('[Birds] Requesting clip:', effectiveAudioUrl);
       audioRef.current.load();
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(err => {
+        console.error('[Birds] Clip playback failed:', err);
+        setIsPlaying(false);
+      });
     }
   };
 
@@ -411,7 +408,6 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
     e.preventDefault();
     e.stopPropagation();
     if (isAiLoading) return;
-
     setIsAiLoading(true);
     try {
       const resp = await fetch('/api/birds/ai-fact', {
@@ -420,9 +416,7 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
         body: JSON.stringify({ species: sighting.commonName }),
       });
       const data = await resp.json();
-      if (data.success && data.fact) {
-        setLocalFact(data.fact);
-      }
+      if (data.success && data.fact) setLocalFact(data.fact);
     } catch (err) {
       console.error('[Bird AI] Failed to fetch fact:', err);
     } finally {
@@ -462,23 +456,13 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
             <h3 className="text-base font-black text-white uppercase tracking-tight leading-tight group-hover:text-blue-400 transition-colors line-clamp-1">{sighting.commonName}</h3>
             <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1 line-clamp-1">{sighting.scientificName}</p>
           </div>
-          <button
-            onClick={handleRefreshAiFact}
-            disabled={isAiLoading}
-            className={`p-1.5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors ${isAiLoading ? 'animate-spin' : ''}`}
-            title="Refresh AI Bird Intelligence"
-          >
-            <Sparkles className={`w-3.5 h-3.5 ${localFact ? 'text-amber-400' : 'text-slate-500'}`} />
+          <button onClick={handleRefreshAiFact} disabled={isAiLoading} className={`p-1.5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors ${isAiLoading ? 'animate-spin' : ''}`} title="Refresh AI Bird Intelligence">
+            <Zap className={`w-3.5 h-3.5 ${localFact ? 'text-amber-400' : 'text-slate-500'}`} />
           </button>
         </div>
 
-        {/* Fun Fact Section */}
         {localFact && (
           <div className="px-3 py-2 rounded-xl bg-amber-950/20 border border-amber-500/20 text-[10px] text-amber-200/80 leading-relaxed italic animate-in fade-in slide-in-from-top-1 duration-300">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Sparkles className="w-2.5 h-2.5 text-amber-500" />
-              <span className="font-black uppercase tracking-[0.1em] text-[8px] text-amber-500">AI Intelligence</span>
-            </div>
             {localFact}
           </div>
         )}
@@ -486,30 +470,14 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
         <div className="flex flex-col gap-2 mt-auto">
           {effectiveAudioUrl ? (
             <>
-              <button
-                onClick={toggleAudio}
-                className={`w-full py-2.5 rounded-2xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest transition-all ${
-                  isPlaying
-                    ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/20'
-                    : 'bg-blue-600/10 text-blue-400 border border-blue-500/20 hover:bg-blue-600 hover:text-white hover:border-blue-500'
-                }`}
-              >
+              <button onClick={toggleAudio} className={`w-full py-2.5 rounded-2xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest transition-all ${isPlaying ? 'bg-rose-600 text-white shadow-lg' : 'bg-blue-600/10 text-blue-400 border border-blue-500/20 hover:bg-blue-600 hover:text-white'}`}>
                 {isPlaying ? <X className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
                 <span>{isPlaying ? 'Stop' : 'Listen to Clip'}</span>
               </button>
-              <audio
-                ref={audioRef}
-                src={effectiveAudioUrl}
-                onEnded={() => setIsPlaying(false)}
-                onPause={() => setIsPlaying(false)}
-                crossOrigin="anonymous"
-                preload="none"
-              />
+              <audio ref={audioRef} src={effectiveAudioUrl} onEnded={() => setIsPlaying(false)} onPause={() => setIsPlaying(false)} crossOrigin="anonymous" preload="none" />
             </>
           ) : (
-            <div className="w-full py-2.5 rounded-2xl bg-slate-800/40 text-slate-600 text-[10px] font-black uppercase tracking-widest text-center border border-transparent">
-              No Clip Available
-            </div>
+            <div className="w-full py-2.5 rounded-2xl bg-slate-800/40 text-slate-600 text-[10px] font-black uppercase tracking-widest text-center">No Clip</div>
           )}
 
           <div className="flex items-center justify-between pt-2 border-t border-slate-800/50">
@@ -523,4 +491,3 @@ const BirdSightingCard: React.FC<{ sighting: BirdSighting; serverUrl?: string }>
     </div>
   );
 };
-

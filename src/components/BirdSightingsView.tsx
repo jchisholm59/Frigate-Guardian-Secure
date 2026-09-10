@@ -28,6 +28,13 @@ const LiveAudioMonitor: React.FC<{ rtspUrl: string }> = ({ rtspUrl }) => {
 
   const proxyUrl = `/api/birds/proxy/live-audio?url=${encodeURIComponent(rtspUrl)}`;
 
+  useEffect(() => {
+    // When listening state changes, log it to the console for debugging
+    if (!isListening) {
+      console.log(`[Birds] Attempting to listen to live audio: ${proxyUrl}`);
+    }
+  }, [isListening, proxyUrl]);
+
   const toggleListening = () => {
     const nextMuted = !isListening;
     setIsMuted(nextMuted);

@@ -427,23 +427,32 @@ async function startServer() {
     }
   });
 
-  // Proxy BirdNET Live RTSP Audio stream using FFmpeg (transcodes to MP3 for browser)
+  // Proxy BirdNET Live RTSP Audio stream using FFmpeg (transcoding for browser)
   app.get('/api/birds/proxy/live-audio', (req, res) => {
     const { url } = req.query;
-    if (!url) return res.status(400).send('Missing RTSP URL');
+    if (!url) {
+      console.error('[BirdNET Proxy] Request received without RTSP URL');
+      return res.status(400).send('Missing RTSP URL');
+    }
 
-    console.log(`[BirdNET Proxy] Initializing live audio relay for: ${url}`);
+    const rtspUrl = url as string;
+    console.log(`[BirdNET Proxy] Initializing live audio relay for: ${rtspUrl}`);
 
+    // Standard headers for a streaming audio response
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('Transfer-Encoding', 'chunked');
+    res.setHeader('Cache-Control', 'no-cache, no-store');
 
     // Use FFmpeg to grab RTSP audio and pipe it as MP3 to the browser
+    // Added -loglevel debug for troubleshooting in PM2 logs
     const ffmpeg = spawn('ffmpeg', [
-      '-i', url as string,
+      '-loglevel', 'info',
+      '-i', rtspUrl,
       '-vn',                   // No video
       '-acodec', 'libmp3lame', // Encode to MP3
       '-ab', '128k',           // Bitrate
+      '-ar', '44100',          // Sample rate for web compatibility
       '-f', 'mp3',             // Format
       'pipe:1'                 // Output to stdout
     ]);
@@ -451,16 +460,24 @@ async function startServer() {
     ffmpeg.stdout.pipe(res);
 
     ffmpeg.stderr.on('data', (data) => {
-      // For debugging: console.log(`[FFmpeg] ${data}`);
+      const msg = data.toString();
+      // Forward FFmpeg status to PM2 logs so we can see if it connects to the ESP32
+      if (msg.includes('Error') || msg.includes('Failed') || msg.includes('Stream')) {
+        console.log(`[BirdNET FFmpeg] ${msg.trim()}`);
+      }
     });
 
     ffmpeg.on('error', (err) => {
-      console.error('[BirdNET Proxy] FFmpeg error:', err);
-      if (!res.headersSent) res.status(500).send('FFmpeg not installed or failed');
+      console.error('[BirdNET Proxy] FFmpeg spawn error:', err);
+      if (!res.headersSent) res.status(500).send('FFmpeg process failed to start');
+    });
+
+    ffmpeg.on('exit', (code) => {
+      console.log(`[BirdNET Proxy] FFmpeg process exited with code ${code}`);
     });
 
     req.on('close', () => {
-      console.log('[BirdNET Proxy] Client disconnected, killing FFmpeg relay');
+      console.log('[BirdNET Proxy] Browser disconnected, stopping FFmpeg relay');
       ffmpeg.kill('SIGKILL');
     });
   });

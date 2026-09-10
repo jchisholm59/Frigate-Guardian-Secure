@@ -62,6 +62,13 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
     if (!video || videoError) return;
 
     video.playbackRate = speed;
+
+    // Explicitly load the video when the source changes
+    // This ensures the browser re-evaluates the stream headers (important for our proxy)
+    if (event?.clipUrl && video.src !== event.clipUrl) {
+      video.load();
+    }
+
     if (isPlaying) {
       video.play().catch(() => {
         // Handle auto-play block or other interaction errors
@@ -178,6 +185,7 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
               src={event.clipUrl}
               className="w-full h-full object-contain"
               playsInline
+              muted
               loop={isLooping}
               onTimeUpdate={() => {
                 if (videoRef.current) setCurrentTime(videoRef.current.currentTime);

@@ -737,7 +737,7 @@ Return a JSON object with:
           box,
           snapshotUrl: `/api/frigate/proxy/image?serverUrl=${encodeURIComponent(baseUrl)}&path=${encodeURIComponent(`/api/events/${evt.id}/snapshot.jpg?bbox=1`)}`,
           thumbnailUrl: `/api/frigate/proxy/image?serverUrl=${encodeURIComponent(baseUrl)}&path=${encodeURIComponent(`/api/events/${evt.id}/thumbnail.jpg`)}`,
-          clipUrl: `/api/frigate/proxy/clip?serverUrl=${encodeURIComponent(baseUrl)}&eventId=${encodeURIComponent(evt.id)}`,
+          clipUrl: `/api/frigate/proxy/events/${evt.id}/clip.mp4?serverUrl=${encodeURIComponent(baseUrl)}`,
         };
       });
 
@@ -939,7 +939,7 @@ Return a JSON object with:
                   ? `/api/frigate/proxy/image?serverUrl=${encodeURIComponent(activeMqttConfig.frigateServerUrl)}&path=${encodeURIComponent(`/api/events/${evtData.id}/thumbnail.jpg`)}`
                   : undefined,
                 clipUrl: activeMqttConfig.frigateServerUrl
-                  ? `/api/frigate/proxy/clip?serverUrl=${encodeURIComponent(activeMqttConfig.frigateServerUrl)}&eventId=${encodeURIComponent(evtData.id)}`
+                  ? `/api/frigate/proxy/events/${evtData.id}/clip.mp4?serverUrl=${encodeURIComponent(activeMqttConfig.frigateServerUrl)}`
                   : undefined,
               };
 
@@ -1283,8 +1283,10 @@ Return a JSON object with:
   });
 
   // Proxy video clips (with HTTP 206 Partial Content range seeking for 10-second scrubber)
-  app.get('/api/frigate/proxy/clip', (req, res) => {
-    const { serverUrl, eventId } = req.query;
+  app.get(['/api/frigate/proxy/clip', '/api/frigate/proxy/events/:eventId/clip.mp4'], (req, res) => {
+    const serverUrl = req.query.serverUrl;
+    const eventId = req.params.eventId || req.query.eventId;
+
     if (!serverUrl || !eventId) {
       return res.status(400).send('Missing serverUrl or eventId');
     }

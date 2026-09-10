@@ -400,29 +400,34 @@ async function startServer() {
       console.log(`[BirdNET Proxy] Fetching audio from: ${fullUrl}`);
 
       const audioResp = await fetch(fullUrl);
+
+      // Handle potential 404 or other errors by trying the fallback
       if (!audioResp.ok) {
-        // Fallback to media/audio?id= format
         const fallbackUrl = `${baseUrl}/api/v2/media/audio?id=${id}`;
-        console.log(`[BirdNET Proxy] Retrying with fallback: ${fallbackUrl}`);
+        console.log(`[BirdNET Proxy] Primary failed (${audioResp.status}). Retrying with fallback: ${fallbackUrl}`);
         const fallbackResp = await fetch(fallbackUrl);
 
         if (!fallbackResp.ok) {
-          return res.status(audioResp.status).send('Audio clip not found on BirdNET host');
+          console.error(`[BirdNET Proxy] All audio endpoints failed for ID: ${id}`);
+          return res.status(404).send('Audio clip not found on BirdNET host');
         }
 
         const contentType = fallbackResp.headers.get('content-type') || 'audio/wav';
         res.setHeader('Content-Type', contentType);
+        res.setHeader('Access-Control-Allow-Origin', '*'); // Added CORS here too
         const arrayBuffer = await fallbackResp.arrayBuffer();
         return res.send(Buffer.from(arrayBuffer));
       }
 
+      // Success with primary endpoint
       const contentType = audioResp.headers.get('content-type') || 'audio/wav';
       res.setHeader('Content-Type', contentType);
+      res.setHeader('Access-Control-Allow-Origin', '*'); // Added CORS here too
 
       const arrayBuffer = await audioResp.arrayBuffer();
       res.send(Buffer.from(arrayBuffer));
     } catch (err: any) {
-      console.error('BirdNET audio proxy error:', err);
+      console.error('[BirdNET Proxy] Critical proxy error:', err.message);
       res.status(502).send('Error proxying bird audio clip');
     }
   });

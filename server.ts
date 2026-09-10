@@ -10,8 +10,42 @@ import { createRequire } from 'module';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import mqtt, { type MqttClient } from 'mqtt';
-import { Readable } from 'stream';
+import { Readable, Transform } from 'stream';
 import nodemailer from 'nodemailer';
+
+// In-Memory HEVC (H.265) binary patcher to convert 'hev1' containers to Apple-compatible 'hvc1' containers
+class HevcPatchStream extends Transform {
+  private tail: Buffer = Buffer.alloc(0);
+  private search: Buffer = Buffer.from('hev1');
+  private replace: Buffer = Buffer.from('hvc1');
+
+  _transform(chunk: any, encoding: string, callback: Function) {
+    // Prepend the tail from the last chunk to catch split tags
+    let data = Buffer.concat([this.tail, chunk]);
+    let pos = 0;
+
+    // Find and replace all occurrences
+    while ((pos = data.indexOf(this.search, pos)) !== -1) {
+      this.replace.copy(data, pos);
+      pos += 4;
+    }
+
+    // Keep the last 3 bytes as tail (in case 'hev' is at the end of the chunk)
+    const tailSize = this.search.length - 1;
+    if (data.length > tailSize) {
+      this.push(data.slice(0, data.length - tailSize));
+      this.tail = data.slice(data.length - tailSize);
+    } else {
+      this.tail = data;
+    }
+    callback();
+  }
+
+  _flush(callback: Function) {
+    this.push(this.tail);
+    callback();
+  }
+}
 
 // Environment compatibility for ESM/CJS
 const __filename = typeof import.meta.url !== 'undefined'
@@ -1258,9 +1292,10 @@ Return a JSON object with:
     const fullUrl = `${(serverUrl as string).replace(/\/$/, '')}/api/events/${eventId}/clip.mp4`;
     const requester = fullUrl.startsWith('https') ? https : http;
 
-    console.log(`[Clip Proxy] Piping event clip from: ${fullUrl}`);
+    console.log(`[Clip Proxy] Piping event clip from: ${fullUrl} (Range: ${req.headers.range || 'none'})`);
 
     const options = {
+      method: 'GET',
       headers: {} as Record<string, string>
     };
 
@@ -1268,14 +1303,29 @@ Return a JSON object with:
       options.headers['Range'] = req.headers.range;
     }
 
-    requester.get(fullUrl, options, (remoteRes) => {
+    const proxyReq = requester.request(fullUrl, options, (proxyRes) => {
       // Forward status and all headers (including Content-Range and Accept-Ranges)
-      res.writeHead(remoteRes.statusCode || 200, remoteRes.headers);
-      remoteRes.pipe(res);
-    }).on('error', (err) => {
+      res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+
+      // If we have a successful video response, apply the HEVC patch stream
+      // This solves the 'blank image' / playback failure on Safari and iOS
+      if (proxyRes.statusCode === 200 || proxyRes.statusCode === 206) {
+        proxyRes.pipe(new HevcPatchStream()).pipe(res);
+      } else {
+        proxyRes.pipe(res);
+      }
+    });
+
+    proxyReq.on('error', (err) => {
       console.error(`[Clip Proxy] Error proxying clip: ${err.message}`);
       if (!res.headersSent) res.status(502).send('Error proxying event clip');
     });
+
+    req.on('close', () => {
+      proxyReq.destroy();
+    });
+
+    proxyReq.end();
   });
 
   // Test connection to live Frigate NVR instance (backward compatibility)

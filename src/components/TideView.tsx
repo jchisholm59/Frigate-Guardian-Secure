@@ -103,7 +103,7 @@ export const TideView: React.FC<TideViewProps> = ({ config }) => {
           <Info className="w-10 h-10 text-red-500 mx-auto mb-4" />
           <p className="text-sm font-bold text-red-400 uppercase">{error}</p>
         </div>
-      ) : (stationData && Array.isArray(stationData.predictions)) ? (
+      ) : (stationData && Array.isArray(stationData.predictions) && stationData.predictions.length > 0) ? (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Main Chart Section */}
           <div className="xl:col-span-2 space-y-6">

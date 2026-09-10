@@ -529,15 +529,18 @@ async function startServer() {
       ]);
 
       const [series, hilo] = await Promise.all([
-        seriesResp.json(),
-        hiloResp.json()
+        seriesResp.ok ? seriesResp.json() : Promise.resolve([]),
+        hiloResp.ok ? hiloResp.json() : Promise.resolve([])
       ]);
+
+      console.log(`[Tides] Data fetch for ${stationId} complete. Predictions: ${series.length}, Hilo: ${hilo.length}`);
 
       res.json({
         success: true,
         stationId,
         predictions: series,
         highLow: hilo
+      });
       });
     } catch (err: any) {
       console.error('[Tides] Data fetch error:', err.message);

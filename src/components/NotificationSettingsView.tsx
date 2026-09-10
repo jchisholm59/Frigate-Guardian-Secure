@@ -98,10 +98,19 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
 
   const currentStations = (config && Array.isArray(config.stations)) ? config.stations : [];
 
-  const addStation = (station: TidalStation) => {
+  const addStation = (station: any) => {
     if (!station || !station.id) return;
     if (currentStations.some(s => s && s.id === station.id)) return;
-    onUpdate({ stations: [...currentStations, station] });
+
+    // Normalize station data to ensure we have a 'name' property
+    const normalizedStation: TidalStation = {
+      id: station.id,
+      code: station.code,
+      name: station.officialName || station.name || 'Unknown Station',
+      province: station.provinceCode || station.province || 'NS'
+    };
+
+    onUpdate({ stations: [...currentStations, normalizedStation] });
   };
 
   const removeStation = (id: string) => {
@@ -131,7 +140,7 @@ const TidalSettingsSection: React.FC<{ config?: TidalStationConfig; onUpdate: (p
             return (
               <div key={s.id || `station-${idx}`} className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-800">
                 <div>
-                  <p className="text-xs font-black text-white uppercase">{s.name || 'Unknown Station'}</p>
+                  <p className="text-xs font-black text-white uppercase">{s.name || s.officialName || 'Unknown Station'}</p>
                   <p className="text-[9px] font-mono text-cyan-500">{s.code || 'N/A'}</p>
                 </div>
                 <button

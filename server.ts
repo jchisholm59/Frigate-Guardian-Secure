@@ -10,42 +10,26 @@ import { createRequire } from 'module';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import mqtt, { type MqttClient } from 'mqtt';
-import { Readable, Transform } from 'stream';
 import nodemailer from 'nodemailer';
 import { createTideService } from './tides';
 
-// In-Memory HEVC (H.265) binary patcher to convert 'hev1' containers to Apple-compatible 'hvc1' containers
-class HevcPatchStream extends Transform {
-  private tail: Buffer = Buffer.alloc(0);
-  private search: Buffer = Buffer.from('hev1');
-  private replace: Buffer = Buffer.from('hvc1');
-
-  _transform(chunk: any, encoding: string, callback: Function) {
-    // Prepend the tail from the last chunk to catch split tags
-    let data = Buffer.concat([this.tail, chunk]);
-    let pos = 0;
-
-    // Find and replace all occurrences
-    while ((pos = data.indexOf(this.search, pos)) !== -1) {
-      this.replace.copy(data, pos);
-      pos += 4;
-    }
-
-    // Keep the last 3 bytes as tail (in case 'hev' is at the end of the chunk)
-    const tailSize = this.search.length - 1;
-    if (data.length > tailSize) {
-      this.push(data.slice(0, data.length - tailSize));
-      this.tail = data.slice(data.length - tailSize);
-    } else {
-      this.tail = data;
-    }
-    callback();
-  }
-
-  _flush(callback: Function) {
-    this.push(this.tail);
-    callback();
-  }
+// Probe an event clip's video codec via ffprobe so we only pay the transcode
+// cost for H.265 clips (Firefox/Chrome cannot decode HEVC at all, regardless
+// of container tags — relabeling the codec box is not sufficient).
+function probeVideoCodec(url: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const probe = spawn('ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=codec_name',
+      '-of', 'csv=p=0',
+      url,
+    ]);
+    let out = '';
+    probe.stdout.on('data', (d) => { out += d.toString(); });
+    probe.on('error', () => resolve(null));
+    probe.on('close', () => resolve(out.trim() || null));
+  });
 }
 
 // Environment compatibility for ESM (tsx dev) and CJS (esbuild prod bundle).
@@ -1736,7 +1720,7 @@ Return a JSON object with:
   });
 
   // Proxy video clips (with HTTP 206 Partial Content range seeking for 10-second scrubber)
-  app.get(['/api/frigate/proxy/clip', '/api/frigate/proxy/events/:eventId/clip.mp4'], (req, res) => {
+  app.get(['/api/frigate/proxy/clip', '/api/frigate/proxy/events/:eventId/clip.mp4'], async (req, res) => {
     const serverUrl = req.query.serverUrl;
     const eventId = req.params.eventId || req.query.eventId;
 
@@ -1745,6 +1729,44 @@ Return a JSON object with:
     }
 
     const fullUrl = `${(serverUrl as string).replace(/\/$/, '')}/api/events/${eventId}/clip.mp4`;
+
+    const codec = await probeVideoCodec(fullUrl);
+
+    if (codec === 'hevc') {
+      // Firefox/Chrome cannot decode H.265 at all, so transcode to H.264 on the
+      // fly. Range seeking isn't supported on the transcoded stream (ffmpeg's
+      // output length isn't known up front), but frag_keyframe+faststart lets
+      // the browser start playback as soon as the first fragment arrives.
+      console.log(`[Clip Proxy] Transcoding HEVC clip to H.264 for browser playback: ${fullUrl}`);
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Accept-Ranges', 'none');
+
+      const ffmpeg = spawn('ffmpeg', [
+        '-i', fullUrl,
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-crf', '23',
+        '-c:a', 'aac',
+        '-movflags', 'frag_keyframe+empty_moov+faststart',
+        '-f', 'mp4',
+        'pipe:1',
+      ]);
+
+      ffmpeg.stdout.pipe(res);
+      ffmpeg.stderr.on('data', (data) => {
+        console.error(`[Clip Transcode] ${data.toString().trim()}`);
+      });
+      ffmpeg.on('error', (err) => {
+        console.error(`[Clip Proxy] ffmpeg spawn error: ${err.message}`);
+        if (!res.headersSent) res.status(502).send('Error transcoding event clip');
+      });
+      req.on('close', () => {
+        ffmpeg.kill('SIGKILL');
+      });
+      return;
+    }
+
+    // H.264 (or codec could not be determined) — cheap passthrough with range support.
     const requester = fullUrl.startsWith('https') ? https : http;
 
     console.log(`[Clip Proxy] Piping event clip from: ${fullUrl} (Range: ${req.headers.range || 'none'})`);
@@ -1759,16 +1781,8 @@ Return a JSON object with:
     }
 
     const proxyReq = requester.request(fullUrl, options, (proxyRes) => {
-      // Forward status and all headers (including Content-Range and Accept-Ranges)
       res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
-
-      // If we have a successful video response, apply the HEVC patch stream
-      // This solves the 'blank image' / playback failure on Safari and iOS
-      if (proxyRes.statusCode === 200 || proxyRes.statusCode === 206) {
-        proxyRes.pipe(new HevcPatchStream()).pipe(res);
-      } else {
-        proxyRes.pipe(res);
-      }
+      proxyRes.pipe(res);
     });
 
     proxyReq.on('error', (err) => {

@@ -790,6 +790,8 @@ export default function App() {
             onUpdateEventAiSummary={handleUpdateEventAiSummary}
             onRefreshEvents={() => handleSyncServerCameras(activeServer)}
             isLiveServerConnected={!activeServer.isSimulated}
+            mqttStatus={mqttStatus}
+            onOpenHostModal={() => setIsHostModalOpen(true)}
           />
         )}
 

@@ -167,6 +167,7 @@ function serveFileWithRange(req: express.Request, res: express.Response, filePat
   res.setHeader('Accept-Ranges', 'bytes');
 
   const range = req.headers.range;
+  let stream: fs.ReadStream;
   if (range) {
     const match = /bytes=(\d+)-(\d*)/.exec(range);
     const start = match ? parseInt(match[1], 10) : 0;
@@ -175,11 +176,29 @@ function serveFileWithRange(req: express.Request, res: express.Response, filePat
       'Content-Range': `bytes ${start}-${end}/${stat.size}`,
       'Content-Length': end - start + 1,
     });
-    fs.createReadStream(filePath, { start, end }).pipe(res);
+    stream = fs.createReadStream(filePath, { start, end });
   } else {
     res.writeHead(200, { 'Content-Length': stat.size });
-    fs.createReadStream(filePath).pipe(res);
+    stream = fs.createReadStream(filePath);
   }
+
+  // Without this, a client abort (tab close, seek, retry) or a filesystem
+  // hiccup mid-read leaves the response socket open forever — the read
+  // stream has nothing left to pipe into (or errors) but never calls
+  // res.end()/res.destroy(), so the connection just hangs. Since browsers
+  // cap concurrent connections per origin (~6 on HTTP/1.1), a handful of
+  // these piling up over a session is enough to make unrelated requests to
+  // this app queue behind them indefinitely.
+  stream.on('error', (err) => {
+    console.error(`[Range Serve] Read stream error for ${filePath}: ${err.message}`);
+    stream.destroy();
+    res.destroy();
+  });
+  req.on('close', () => {
+    stream.destroy();
+  });
+
+  stream.pipe(res);
 }
 
 // Environment compatibility for ESM (tsx dev) and CJS (esbuild prod bundle).

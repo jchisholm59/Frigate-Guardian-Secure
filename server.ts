@@ -75,6 +75,7 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const SETTINGS_FILE = path.join(DATA_DIR, 'notification_settings.json');
 const MQTT_CONFIG_FILE = path.join(DATA_DIR, 'mqtt_config.json');
 const BIRD_SIGHTINGS_FILE = path.join(DATA_DIR, 'bird_sightings.json');
+const SERVERS_FILE = path.join(DATA_DIR, 'frigate_servers.json');
 
 // Migration: Move files from project .data directory to home directory if they exist
 try {
@@ -129,6 +130,10 @@ let speciesFactCache: Record<string, string> = {};
 let dailyAlertedSpecies = new Set<string>();
 let lastBirdAlertReset = new Date().getUTCDate();
 
+// Configured Frigate servers, persisted so a fresh browser / another device
+// gets the same server list (URLs, keys) instead of an empty console.
+let persistentServers: any[] = [];
+
 // Load settings on startup
 try {
   if (fs.existsSync(SETTINGS_FILE)) {
@@ -138,6 +143,16 @@ try {
   }
 } catch (err) {
   console.error('[Settings] Failed to load persistent settings:', err);
+}
+
+// Load Frigate server list on startup
+try {
+  if (fs.existsSync(SERVERS_FILE)) {
+    persistentServers = JSON.parse(fs.readFileSync(SERVERS_FILE, 'utf-8'));
+    console.log(`[Settings] Loaded ${persistentServers.length} configured Frigate server(s) from disk`);
+  }
+} catch (err) {
+  console.error('[Settings] Failed to load configured servers:', err);
 }
 
 // Load bird sightings on startup
@@ -171,6 +186,20 @@ function savePersistentSettings() {
     fs.writeFileSync(SETTINGS_FILE, newData);
   } catch (err) {
     console.error('[Settings] Failed to save persistent settings to disk:', err);
+  }
+}
+
+function saveServersToDisk() {
+  try {
+    const newData = JSON.stringify(persistentServers, null, 2);
+    if (fs.existsSync(SERVERS_FILE)) {
+      const currentData = fs.readFileSync(SERVERS_FILE, 'utf-8');
+      if (currentData === newData) return; // No change, skip write to avoid watcher restart
+    }
+    console.log('[Settings] Saving changed Frigate server list to disk...');
+    fs.writeFileSync(SERVERS_FILE, newData);
+  } catch (err) {
+    console.error('[Settings] Failed to save configured servers to disk:', err);
   }
 }
 
@@ -602,7 +631,20 @@ async function startServer() {
   });
 
   app.get('/api/notifications/settings', (_req, res) => {
-    res.json({ success: true, settings: persistentSettings });
+    res.json({ success: true, settings: persistentSettings, persisted: fs.existsSync(SETTINGS_FILE) });
+  });
+
+  // Configured Frigate servers — persisted server-side so every device sees the same list
+  app.get('/api/frigate/servers', (_req, res) => {
+    res.json({ success: true, servers: persistentServers, persisted: fs.existsSync(SERVERS_FILE) });
+  });
+
+  app.post('/api/frigate/servers', (req, res) => {
+    if (Array.isArray(req.body?.servers)) {
+      persistentServers = req.body.servers;
+      saveServersToDisk();
+    }
+    res.json({ success: true, servers: persistentServers });
   });
 
   // Health check

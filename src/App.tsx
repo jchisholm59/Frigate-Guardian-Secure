@@ -74,10 +74,16 @@ export default function App() {
     return DEFAULT_NOTIFICATION_SETTINGS;
   });
 
+  // Becomes true once we've loaded server-side settings on boot. Until then we
+  // don't push local state up, so a fresh browser can't overwrite the server's
+  // saved config with its own defaults before we've read it.
+  const hydratedRef = useRef(false);
+
   const lastSyncedNotifRef = useRef<string>('');
   useEffect(() => {
     try {
       localStorage.setItem('frigate_notification_settings', JSON.stringify(notificationSettings));
+      if (!hydratedRef.current) return;
 
       const configJson = JSON.stringify(notificationSettings);
       // Only sync if the configuration HAS ACTUALLY CHANGED to avoid infinite loops
@@ -196,10 +202,24 @@ export default function App() {
   const [tideAlert, setTideAlert] = useState<string | null>(null);
   const [notificationToast, setNotificationToast] = useState<string | null>(null);
 
-  // Persist servers
+  // Persist servers — locally, and (once hydrated) server-side so the same
+  // list of Frigate hosts shows up on every browser / device.
+  const lastSyncedServersRef = useRef<string>('');
   useEffect(() => {
     try {
       localStorage.setItem('frigate_configured_servers', JSON.stringify(servers));
+      if (!hydratedRef.current) return;
+
+      const json = JSON.stringify(servers);
+      if (json !== lastSyncedServersRef.current) {
+        fetch('/api/frigate/servers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ servers }),
+        }).then(() => {
+          lastSyncedServersRef.current = json;
+        }).catch(err => console.warn('Failed to sync server list to backend:', err));
+      }
     } catch (e) {}
   }, [servers]);
 
@@ -208,6 +228,44 @@ export default function App() {
       localStorage.setItem('frigate_active_server_id', activeServerId);
     } catch (e) {}
   }, [activeServerId]);
+
+  // Boot: adopt server-side saved settings so opening the console on another
+  // computer shows the same Frigate hosts, BirdNET and notification config.
+  // The server only wins when it actually has a saved file (`persisted`);
+  // otherwise the local values stand and get pushed up to seed it.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [nR, sR] = await Promise.all([
+          fetch('/api/notifications/settings').then((r) => r.json()).catch(() => ({})),
+          fetch('/api/frigate/servers').then((r) => r.json()).catch(() => ({})),
+        ]);
+        if (cancelled) return;
+
+        if (nR?.persisted && nR.settings) {
+          const merged = { ...DEFAULT_NOTIFICATION_SETTINGS, ...nR.settings };
+          lastSyncedNotifRef.current = JSON.stringify(merged);
+          setNotificationSettings(merged);
+        }
+
+        if (sR?.persisted && Array.isArray(sR.servers) && sR.servers.length > 0) {
+          lastSyncedServersRef.current = JSON.stringify(sR.servers);
+          setServers(sR.servers);
+          setActiveServerId((prev) =>
+            sR.servers.some((s: FrigateServerConfig) => s.id === prev) ? prev : sR.servers[0].id,
+          );
+        }
+      } catch (e) {
+        // Offline / server unreachable — carry on with local values.
+      } finally {
+        if (!cancelled) hydratedRef.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Synchronize cameras & events from active server
   const handleSyncServerCameras = useCallback(

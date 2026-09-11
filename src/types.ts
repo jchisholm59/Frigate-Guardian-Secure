@@ -197,6 +197,7 @@ export interface NotificationSettings {
   birdnet?: BirdNetConfig;
   tides?: TidalConfig;
   flights?: FlightsConfig;
+  weather?: WeatherConfig;
 }
 
 // --- Flights (PiAware / dump1090-fa ADS-B receiver) ---
@@ -258,6 +259,47 @@ export interface FlightDetail {
     photographer?: string;
     link?: string;
   };
+  error?: string;
+}
+
+// --- Weather (Open-Meteo) ---
+
+export interface WeatherConfig {
+  enabled: boolean;
+  homeLat: number;
+  homeLon: number;
+}
+
+export interface WeatherCurrent {
+  time: string;
+  temperatureC: number;
+  apparentTemperatureC: number;
+  humidityPct: number;
+  precipitationMm: number;
+  weatherCode: number;
+  windSpeedKmh: number;
+  windDirectionDeg: number;
+  pressureHpa: number;
+  isDay: boolean;
+}
+
+export interface WeatherDailyEntry {
+  date: string;
+  weatherCode: number;
+  highC: number;
+  lowC: number;
+  precipProbabilityPct: number;
+  windSpeedMaxKmh: number;
+  sunrise: string;
+  sunset: string;
+}
+
+export interface WeatherReadout {
+  success: boolean;
+  current?: WeatherCurrent;
+  daily?: WeatherDailyEntry[];
+  timezone?: string;
+  fetchedAt?: number;
   error?: string;
 }
 
@@ -361,7 +403,7 @@ export interface NotificationLog {
   details?: string;
 }
 
-export type ActiveTab = 'live' | 'events' | 'birds' | 'tides' | 'flights' | 'zones' | 'config' | 'system' | 'notifications';
+export type ActiveTab = 'live' | 'events' | 'birds' | 'tides' | 'flights' | 'weather' | 'zones' | 'config' | 'system' | 'notifications';
 
 export type AppTheme = 'midnight' | 'slate-grey';
 

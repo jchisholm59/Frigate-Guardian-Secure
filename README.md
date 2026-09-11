@@ -67,7 +67,11 @@ If you find WatchTower useful, consider starring and supporting those projects d
 *   **PiAware / dump1090-fa Integration:** Live aircraft positions from your own local ADS-B receiver — no third-party tracking service required.
 *   **300nm Range Map:** Street, Satellite, and Topographic layers, centered on your home with 50nm range rings and a one-click 2x zoom for the traffic cluster overhead.
 *   **Flight Table:** Altitude, speed, heading, squawk, and distance from home for every aircraft currently in range.
-*   **Aircraft Detail:** Click any plane for its photo, type, registration, and origin/destination — sourced from free community APIs (adsbdb.com, planespotters.net).
+*   **Aircraft Detail:** Click any plane for its photo, type, registration, and origin/destination — sourced from free community APIs (adsbdb.com, planespotters.net), with optional departure/arrival times via a free registered OpenSky Network API client.
+
+### 🌤 Weather
+*   **Current Conditions:** Temperature, feels-like, humidity, wind, pressure, and precipitation for your home location.
+*   **7-Day Forecast:** Daily highs/lows, precipitation chance, and sunrise/sunset — no API key required (Open-Meteo).
 
 ---
 
@@ -163,10 +167,20 @@ Predictions are cached server-side for 10 minutes. The **Tides** tab shows the c
 ## ✈️ Flights Setup
 Live air traffic requires a local **PiAware** or **dump1090-fa** ADS-B receiver on your network (a Raspberry Pi + RTL-SDR dongle is the common setup). In the dashboard, go to **Notifications -> Flights**:
 1.  **Enable Integration:** Toggle the switch to ON.
-2.  **PiAware Data URL:** Enter the full URL to your receiver's live feed, e.g. `http://192.168.1.x/skyaware/data/aircraft.json`. Use **Test Connection** to confirm it's reachable.
+2.  **PiAware Receiver Address:** Just the IP (e.g. `192.168.1.x`) — WatchTower fills in the standard `/skyaware/data/aircraft.json` path. A full URL also works for non-default installs. Use **Test Connection** to confirm it's reachable.
 3.  **Home Coordinates:** Enter your latitude/longitude to center the map and range rings.
+4.  **OpenSky Network (optional):** For departure/arrival times, register a free API client at [opensky-network.org](https://opensky-network.org/) and paste the Client ID/Secret in. Without it, you still get aircraft photos and routes for scheduled flights, just no timing data.
 
-The **Flights** tab polls the receiver every few seconds — no data leaves your network except the on-demand aircraft photo/route lookups (adsbdb.com, planespotters.net) when you click a specific plane.
+The **Flights** tab polls the receiver every few seconds — no data leaves your network except the on-demand aircraft photo/route lookups (adsbdb.com, planespotters.net, optionally OpenSky) when you click a specific plane.
+
+---
+
+## 🌤 Weather Setup
+Uses [Open-Meteo](https://open-meteo.com/) — free, no API key or account needed. In the dashboard, go to **Notifications -> Weather**:
+1.  **Enable Integration:** Toggle the switch to ON.
+2.  **Home Coordinates:** Enter your latitude/longitude (the same values as Tides/Flights, if configured).
+
+The **Weather** tab refreshes every 10 minutes, matching the server-side cache.
 
 ---
 
@@ -180,7 +194,7 @@ The **Flights** tab polls the receiver every few seconds — no data leaves your
 *   **Frontend:** React, Tailwind CSS, Lucide Icons, Framer Motion, Leaflet.
 *   **Backend:** Node.js, Express, MQTT.js, Nodemailer, FFmpeg.
 *   **AI:** Google Gemini 1.5 Flash.
-*   **Data:** [Frigate NVR](https://frigate.video/) by Blake Blackshear, [BirdNET-Go](https://github.com/tphakala/birdnet-go) (MQTT) by Tomi Hakala, DFO / Canadian Hydrographic Service IWLS (tides), OpenStreetMap / Esri / OpenTopoMap (map tiles), [adsbdb.com](https://www.adsbdb.com/) and [planespotters.net](https://www.planespotters.net/) (flight & aircraft lookups).
+*   **Data:** [Frigate NVR](https://frigate.video/) by Blake Blackshear, [BirdNET-Go](https://github.com/tphakala/birdnet-go) (MQTT) by Tomi Hakala, DFO / Canadian Hydrographic Service IWLS (tides), OpenStreetMap / Esri / OpenTopoMap (map tiles), [adsbdb.com](https://www.adsbdb.com/), [planespotters.net](https://www.planespotters.net/) and [OpenSky Network](https://opensky-network.org/) (flight & aircraft lookups), [Open-Meteo](https://open-meteo.com/) (weather).
 
 ---
 *Created with ❤️ for the Frigate NVR Community.*

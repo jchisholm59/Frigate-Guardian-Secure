@@ -20,6 +20,7 @@ import { ZoneEditor } from './components/ZoneEditor';
 import { BirdSightingsView } from './components/BirdSightingsView';
 import { TideView } from './components/TideView';
 import { FlightsView } from './components/FlightsView';
+import { WeatherView } from './components/WeatherView';
 import { ConfigStudio } from './components/ConfigStudio';
 import { SystemTelemetry } from './components/SystemTelemetry';
 import { CameraDetailModal } from './components/CameraDetailModal';
@@ -829,6 +830,13 @@ export default function App() {
         {activeTab === 'flights' && (
           <FlightsView
             config={notificationSettings.flights}
+            onGoToSettings={() => setActiveTab('notifications')}
+          />
+        )}
+
+        {activeTab === 'weather' && (
+          <WeatherView
+            config={notificationSettings.weather}
             onGoToSettings={() => setActiveTab('notifications')}
           />
         )}

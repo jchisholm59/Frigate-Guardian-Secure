@@ -24,8 +24,10 @@ import {
   MapPin,
   X,
   Plane,
+  CloudSun,
+  Sunrise,
 } from 'lucide-react';
-import { NotificationSettings, NotificationLog, BirdNetConfig, TidalConfig, TidalStation, FlightsConfig } from '../types';
+import { NotificationSettings, NotificationLog, BirdNetConfig, TidalConfig, TidalStation, FlightsConfig, WeatherConfig } from '../types';
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   gmail: {
@@ -83,11 +85,17 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     openskyClientId: '',
     openskyClientSecret: '',
   },
+  weather: {
+    enabled: false,
+    homeLat: 0,
+    homeLon: 0,
+  },
 };
 
 const DEFAULT_TIDES: TidalConfig = DEFAULT_NOTIFICATION_SETTINGS.tides!;
 const MAX_TIDE_STATIONS = 4;
 const DEFAULT_FLIGHTS: FlightsConfig = DEFAULT_NOTIFICATION_SETTINGS.flights!;
+const DEFAULT_WEATHER: WeatherConfig = DEFAULT_NOTIFICATION_SETTINGS.weather!;
 
 interface NotificationSettingsViewProps {
   settings: NotificationSettings;
@@ -101,7 +109,7 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
   availableCameras = [],
 }) => {
   const [localSettings, setLocalSettings] = useState<NotificationSettings>(settings);
-  const [activeChannelTab, setActiveChannelTab] = useState<'gmail' | 'slack' | 'discord' | 'birdnet' | 'tides' | 'flights' | 'filters' | 'logs'>('gmail');
+  const [activeChannelTab, setActiveChannelTab] = useState<'gmail' | 'slack' | 'discord' | 'birdnet' | 'tides' | 'flights' | 'weather' | 'filters' | 'logs'>('gmail');
   const [showSmtpAdvanced, setShowSmtpAdvanced] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   
@@ -253,6 +261,14 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
     } finally {
       setIsTestingFlights(false);
     }
+  };
+
+  const weather: WeatherConfig = { ...DEFAULT_WEATHER, ...(localSettings.weather || {}) };
+
+  const updateWeather = (partial: Partial<WeatherConfig>) => {
+    const updated = { ...localSettings, weather: { ...weather, ...partial } };
+    setLocalSettings(updated);
+    onUpdateSettings(updated);
   };
 
   // Tide station search
@@ -515,6 +531,26 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
             <Plane className="w-3.5 h-3.5 text-white" />
             <span>Flights</span>
             {localSettings.flights?.enabled && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            )}
+          </button>
+
+          {/* Weather Tab */}
+          <button
+            id="tab-notif-weather"
+            onClick={() => {
+              setActiveChannelTab('weather');
+              setTestResult(null);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${
+              activeChannelTab === 'weather'
+                ? 'bg-sky-600 text-white shadow-md'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <CloudSun className="w-3.5 h-3.5 text-white" />
+            <span>Weather</span>
+            {localSettings.weather?.enabled && (
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
             )}
           </button>
@@ -1494,6 +1530,72 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
               <span>{isTestingFlights ? 'Testing...' : 'Test Connection'}</span>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* -------------------- WEATHER TAB -------------------- */}
+      {activeChannelTab === 'weather' && (
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-5 shadow-md">
+          {/* Header & Enable Toggle */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-sky-950/40 border border-sky-500/30 text-sky-400">
+                <Sunrise className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black uppercase tracking-tight text-white">Weather</h4>
+                <p className="text-xs text-slate-400">
+                  Current conditions and a 7-day forecast for your home location, via Open-Meteo (free, no key required).
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  id="toggle-weather-enabled"
+                  type="checkbox"
+                  checked={weather.enabled}
+                  onChange={(e) => updateWeather({ enabled: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-sky-600"></div>
+                <span className="ml-2.5 text-xs font-black uppercase tracking-wider text-slate-300">
+                  {weather.enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Home Latitude</label>
+              <input
+                type="number"
+                step="0.00001"
+                placeholder="44.65369"
+                value={weather.homeLat || ''}
+                onChange={(e) => updateWeather({ homeLat: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-700 focus:outline-none focus:border-sky-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Home Longitude</label>
+              <input
+                type="number"
+                step="0.00001"
+                placeholder="-63.81416"
+                value={weather.homeLon || ''}
+                onChange={(e) => updateWeather({ homeLon: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-700 focus:outline-none focus:border-sky-500"
+              />
+            </div>
+          </div>
+
+          <p className="text-[10px] text-slate-600">
+            Forecast data is blended from multiple weather models (including Environment Canada's) via open-meteo.com and
+            cached server-side for 10 minutes.
+          </p>
         </div>
       )}
 

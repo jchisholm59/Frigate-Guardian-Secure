@@ -14,6 +14,7 @@ import mqtt, { type MqttClient } from 'mqtt';
 import nodemailer from 'nodemailer';
 import { createTideService } from './tides';
 import { createFlightService } from './flights';
+import { createWeatherService } from './weather';
 
 // Probe an event clip's video codec via ffprobe so we only pay the transcode
 // cost for H.265 clips (Firefox/Chrome cannot decode HEVC at all, regardless
@@ -314,6 +315,11 @@ let persistentSettings: any = {
     homeLon: 0,
     openskyClientId: '',
     openskyClientSecret: ''
+  },
+  weather: {
+    enabled: false,
+    homeLat: 0,
+    homeLon: 0
   }
 };
 
@@ -1462,6 +1468,13 @@ Return a JSON object with:
     getSettings: () => persistentSettings,
   });
   flightService.registerRoutes(app);
+
+  // Weather service (Open-Meteo) — no scheduler, on-demand + a 10min
+  // server-side cache, polled by the Weather tab while it's open.
+  const weatherService = createWeatherService({
+    getSettings: () => persistentSettings,
+  });
+  weatherService.registerRoutes(app);
 
   function connectToMqtt() {
     if (!activeMqttConfig.brokerHost) return;

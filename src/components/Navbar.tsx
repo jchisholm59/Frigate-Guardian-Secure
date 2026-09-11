@@ -16,6 +16,7 @@ import {
   Bird,
   Waves,
   Plane,
+  CloudSun,
 } from 'lucide-react';
 import { ActiveTab, SystemTelemetryData, MqttStatusInfo, NotificationSettings, AppTheme } from '../types';
 
@@ -244,6 +245,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Plane className="w-3.5 h-3.5 text-amber-400" />
               <span>Flights</span>
+            </button>
+
+            <button
+              id="nav-tab-weather"
+              onClick={() => setActiveTab('weather')}
+              className={`flex items-center gap-2 px-4 py-2 text-xs uppercase tracking-wider font-black rounded-xl transition-all ${
+                activeTab === 'weather'
+                  ? 'bg-white text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/70 border border-transparent'
+              }`}
+            >
+              <CloudSun className="w-3.5 h-3.5 text-sky-400" />
+              <span>Weather</span>
             </button>
 
             <button

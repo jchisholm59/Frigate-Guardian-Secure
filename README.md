@@ -31,12 +31,20 @@ Frigate Guardian is a comprehensive, real-time surveillance dashboard designed t
 *   **Instant YAML:** Automatically generate perfectly formatted YAML code to paste into your Frigate `config.yml`.
 *   **Stability First:** De-duplicated event list ensures you see a single, real-time row per detection instead of hundreds of updates.
 
-### 🐦 Bioacoustic Yard Intelligence (NEW)
+### 🐦 Bioacoustic Yard Intelligence
 *   **BirdNET-Go Integration:** Real-time bird species identification via high-fidelity audio analysis.
 *   **Live Audio Sentinel:** Listen to your yard in real-time with a built-in frequency spectrogram.
 *   **Diversity Report:** Automatic population summary of all species visiting your property.
 *   **Audio Proof:** Play back specific bird song recordings directly from your yard history.
 *   **Daily Species Sentinel:** Intelligent alerts for the first sighting of each unique species every day, preventing notification fatigue.
+
+### 🌊 Tidal Intelligence (NEW)
+*   **CHS Predictions:** Official Canadian Hydrographic Service tide data (DFO IWLS API) — no API key required.
+*   **Multi-Station:** Track up to four stations (home, cottage, marina) and switch between them with sub-tabs.
+*   **30-Hour Curve:** Live SVG tide curve with a "now" marker, interpolated current height, and high/low markers.
+*   **Upcoming Tides:** High & low table plus a "next high/low in Xh Ym" countdown.
+*   **Sun & Moon:** Sunrise, sunset, and moon phase computed locally from each station's coordinates.
+*   **Tide Alerts:** Optional high/low tide notifications a configurable number of minutes ahead, delivered through your existing Gmail / Slack / Discord channels, plus a live in-app banner.
 
 ---
 
@@ -44,7 +52,7 @@ Frigate Guardian is a comprehensive, real-time surveillance dashboard designed t
 
 ### Prerequisites
 *   A running instance of [Frigate NVR](https://frigate.video/).
-*   Node.js v20+ installed on your server.
+*   Node.js v22+ installed on your server.
 
 ### 1. Clone & Install
 ```bash
@@ -117,6 +125,17 @@ To enable bird song identification, go to **Notifications -> BirdNET-Go** in the
 
 ---
 
+## 🌊 Tides Setup
+Tide predictions come from the public **DFO / Canadian Hydrographic Service** IWLS API — no key or account needed. In the dashboard, go to **Notifications -> Tides**:
+1.  **Enable Integration:** Toggle the switch to ON.
+2.  **Add Stations:** Search by name or 5-digit CHS code (e.g. `Halifax`, `Digby`, `00490`) and add up to four.
+3.  **Units:** Choose metres or feet.
+4.  **Tide Alerts (optional):** Toggle on, set how many minutes ahead to notify, pick high and/or low tide, and choose which channels carry them. Alerts reuse the webhook URLs / SMTP credentials from the Gmail, Slack, and Discord tabs.
+
+Predictions are cached server-side for 10 minutes. The **Tides** tab shows the curve, upcoming tides, and sun/moon panel for each configured station. Requires outbound HTTPS to `api-iwls.dfo-mpo.gc.ca`.
+
+---
+
 ## 🔒 Security & Privacy
 *   **Local First:** Your passwords and configuration are stored locally in `~/.frigate-guardian` and never uploaded to the cloud.
 *   **Encrypted Streams:** Supports HTTPS and secure WebSocket (WSS) for camera intercepts.
@@ -127,6 +146,7 @@ To enable bird song identification, go to **Notifications -> BirdNET-Go** in the
 *   **Frontend:** React, Tailwind CSS, Lucide Icons, Framer Motion.
 *   **Backend:** Node.js, Express, MQTT.js, Nodemailer.
 *   **AI:** Google Gemini 1.5 Flash.
+*   **Data:** BirdNET-Go (MQTT), DFO / Canadian Hydrographic Service IWLS (tides).
 
 ---
 *Created with ❤️ for the Frigate NVR Community.*

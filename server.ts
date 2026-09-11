@@ -16,7 +16,7 @@ import { createTideService } from './tides';
 // Probe an event clip's video codec via ffprobe so we only pay the transcode
 // cost for H.265 clips (Firefox/Chrome cannot decode HEVC at all, regardless
 // of container tags — relabeling the codec box is not sufficient).
-function probeVideoCodec(url: string): Promise<string | null> {
+function probeVideoCodec(url: string, timeoutMs = 6000): Promise<string | null> {
   return new Promise((resolve) => {
     const probe = spawn('ffprobe', [
       '-v', 'error',
@@ -26,9 +26,37 @@ function probeVideoCodec(url: string): Promise<string | null> {
       url,
     ]);
     let out = '';
+    let errOut = '';
+    let settled = false;
+
+    const finish = (result: string | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
+
+    // If ffprobe is missing, hangs, or is just slow (a stuck probe must never
+    // block clip playback), give up after timeoutMs and fall back to
+    // passthrough rather than stalling the request indefinitely.
+    const timer = setTimeout(() => {
+      console.error(`[Clip Proxy] ffprobe timed out after ${timeoutMs}ms, falling back to passthrough: ${url}`);
+      probe.kill('SIGKILL');
+      finish(null);
+    }, timeoutMs);
+
     probe.stdout.on('data', (d) => { out += d.toString(); });
-    probe.on('error', () => resolve(null));
-    probe.on('close', () => resolve(out.trim() || null));
+    probe.stderr.on('data', (d) => { errOut += d.toString(); });
+    probe.on('error', (err) => {
+      console.error(`[Clip Proxy] ffprobe spawn error, falling back to passthrough: ${err.message}`);
+      finish(null);
+    });
+    probe.on('close', (code) => {
+      if (code !== 0 && !out.trim()) {
+        console.error(`[Clip Proxy] ffprobe exited with code ${code}, falling back to passthrough: ${errOut.trim()}`);
+      }
+      finish(out.trim() || null);
+    });
   });
 }
 

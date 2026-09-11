@@ -35,13 +35,13 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     smtpSecure: true,
     smtpUser: '',
     smtpPassword: '',
-    senderName: 'Frigate Guardian NVR',
+    senderName: 'WatchTower NVR',
   },
   slack: {
     enabled: false,
     webhookUrl: '',
     channel: '#frigate-alerts',
-    username: 'Frigate Guardian NVR',
+    username: 'WatchTower NVR',
     includeThumbnail: true,
   },
   discord: {
@@ -607,7 +607,7 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
                   <p>
                     1. Go to your Google Account &rarr; Security &rarr; 2-Step Verification &rarr; <strong>App passwords</strong>.
                   </p>
-                  <p>2. Create an App password named &quot;Frigate Guardian&quot; and paste the 16-character code below.</p>
+                  <p>2. Create an App password named &quot;WatchTower&quot; and paste the 16-character code below.</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -670,8 +670,8 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
                     <label className="text-[10px] uppercase font-bold text-slate-400">Sender Display Name</label>
                     <input
                       type="text"
-                      placeholder="Frigate Guardian NVR"
-                      value={localSettings.gmail.senderName || 'Frigate Guardian NVR'}
+                      placeholder="WatchTower NVR"
+                      value={localSettings.gmail.senderName || 'WatchTower NVR'}
                       onChange={(e) => updateGmail({ senderName: e.target.value })}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-white transition-colors"
                     />
@@ -779,7 +779,7 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
               <label className="text-[10px] uppercase font-bold text-slate-400">Bot Display Name</label>
               <input
                 type="text"
-                placeholder="Frigate Guardian NVR"
+                placeholder="WatchTower NVR"
                 value={localSettings.slack.username || ''}
                 onChange={(e) => updateSlack({ username: e.target.value })}
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-white transition-colors"

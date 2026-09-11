@@ -122,12 +122,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
             <div className="flex items-baseline gap-4">
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter uppercase italic text-white leading-none">
-                Frigate Guardian
+                WatchTower
               </h1>
               <span className="hidden sm:inline text-xs font-bold uppercase tracking-widest text-slate-500">
                 Automated Real-Time Vision NVR
               </span>
             </div>
+            <p className="mt-2 text-[10px] font-medium tracking-wide text-slate-600">
+              Built on <span className="text-slate-400">Frigate NVR</span> by Blake Blackshear
+              {' '}&amp;{' '}
+              <span className="text-slate-400">BirdNET-Go</span> by Tomi Hakala
+            </p>
           </div>
 
           {/* Editorial Quick Stats Bar */}

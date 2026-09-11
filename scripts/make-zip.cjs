@@ -8,12 +8,12 @@ if (!fs.existsSync(publicDir)) {
   fs.mkdirSync(publicDir, { recursive: true });
 }
 
-const targetZip = path.join(publicDir, 'frigate-guardian-project.zip');
+const targetZip = path.join(publicDir, 'watchtower-project.zip');
 const output = fs.createWriteStream(targetZip);
 const archive = new ZipArchive({ zlib: { level: 9 } });
 
 output.on('close', () => {
-  console.log(`[ZIP BUILDER] Successfully built frigate-guardian-project.zip (${(archive.pointer() / 1024).toFixed(1)} KB)`);
+  console.log(`[ZIP BUILDER] Successfully built watchtower-project.zip (${(archive.pointer() / 1024).toFixed(1)} KB)`);
 });
 
 archive.on('error', (err) => {
@@ -29,7 +29,7 @@ archive.glob('**/*', {
     'node_modules/**',
     'dist/**',
     '.git/**',
-    'public/frigate-guardian-project.zip',
+    'public/watchtower-project.zip',
     '*.zip',
   ],
   dot: true,

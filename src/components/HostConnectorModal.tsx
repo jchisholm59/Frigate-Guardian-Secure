@@ -975,7 +975,7 @@ export const HostConnectorModal: React.FC<HostConnectorModalProps> = ({
                 </div>
                 <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800">
                   <div className="text-[10px] uppercase font-black tracking-wider text-slate-400">Subscriber ID</div>
-                  <div className="text-xs text-slate-300 truncate mt-0.5">frigate-guardian</div>
+                  <div className="text-xs text-slate-300 truncate mt-0.5">watchtower</div>
                 </div>
               </div>
 

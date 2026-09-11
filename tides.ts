@@ -171,7 +171,7 @@ export function createTideService(deps: TideServiceDeps) {
     const user = process.env.GMAIL_USER || g.smtpUser;
     const pass = process.env.GMAIL_PASSWORD || g.smtpPassword;
     const to = (process.env.GMAIL_RECIPIENT || g.recipientEmail || '').trim();
-    const senderName = process.env.GMAIL_SENDER_NAME || g.senderName || 'Frigate Guardian NVR';
+    const senderName = process.env.GMAIL_SENDER_NAME || g.senderName || 'WatchTower NVR';
     if (!user || !pass || !to) {
       console.log('[Tides] Gmail alert skipped — SMTP credentials or recipient not configured');
       return;
@@ -192,7 +192,7 @@ export function createTideService(deps: TideServiceDeps) {
         <div style="max-width:520px;margin:0 auto;background:#1a1c1e;border:1px solid #333;border-radius:8px;overflow:hidden">
           <div style="background:#0e7490;padding:16px 22px"><h1 style="margin:0;font-size:16px;color:#fff;letter-spacing:1px">🌊 TIDE ALERT</h1></div>
           <div style="padding:22px;font-size:14px;line-height:1.6;white-space:pre-line">${bodyText}</div>
-          <div style="font-size:11px;color:#71717a;text-align:center;padding:14px;border-top:1px solid #27272a">Frigate Guardian • Canadian Hydrographic Service predictions</div>
+          <div style="font-size:11px;color:#71717a;text-align:center;padding:14px;border-top:1px solid #27272a">WatchTower • Canadian Hydrographic Service predictions</div>
         </div></div>`,
     });
     console.log(`[Tides] Gmail alert sent to ${to}`);

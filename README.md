@@ -1,10 +1,21 @@
-# 🛡️ Frigate Guardian
+# 🗼 WatchTower
 
 **The ULTRALATEST Advanced Surveillance Hub & AI Intelligence Console for Frigate NVR.**
 
-Frigate Guardian is a comprehensive, real-time surveillance dashboard designed to supercharge your Frigate NVR experience. It combines high-performance live monitoring with intelligent background automation, multi-channel alerts, and Google Gemini AI vision assessment.
+WatchTower is a comprehensive, real-time surveillance dashboard designed to supercharge your Frigate NVR experience. It combines high-performance live monitoring with intelligent background automation, multi-channel alerts, and Google Gemini AI vision assessment.
 
-![Frigate Guardian UI](https://raw.githubusercontent.com/blakeblackshear/frigate/master/web/src/assets/frigate.png) *(Placeholder for your awesome dashboard screenshot)*
+![WatchTower UI](https://raw.githubusercontent.com/blakeblackshear/frigate/master/web/src/assets/frigate.png) *(Placeholder for your awesome dashboard screenshot)*
+
+---
+
+## 🙏 Built On
+
+WatchTower is a console layered on top of other people's excellent work — it doesn't replace or reimplement them:
+
+*   **[Frigate NVR](https://frigate.video/)** by [Blake Blackshear](https://github.com/blakeblackshear) — the open-source NVR and object-detection engine that does all the actual camera processing, recording, and detection.
+*   **[BirdNET-Go](https://github.com/tphakala/birdnet-go)** by [Tomi Hakala](https://github.com/tphakala) — the real-time bioacoustic bird identification engine behind the Bioacoustic Yard Intelligence features.
+
+If you find WatchTower useful, consider starring and supporting those projects directly.
 
 ---
 
@@ -20,6 +31,7 @@ Frigate Guardian is a comprehensive, real-time surveillance dashboard designed t
 *   **Visual Gmail Alerts:** Receive high-resolution snapshots of detected objects embedded directly in your emails.
 *   **One-Click Action:** Every alert (Gmail, Discord, Slack) includes a direct link to "View Event Recording" via your Tailscale or local network.
 *   **Multi-Channel Support:** Native support for Gmail (SMTP), Discord Webhooks (with image uploads), and Slack Incoming Webhooks.
+*   **Per-Camera Control:** Mute notifications for individual cameras without affecting recording or the Review feed.
 
 ### 🧠 Advanced AI Filtering & Analysis
 *   **Parked Car Logic:** Stop notification fatigue with intelligent filtering for stationary vehicles.
@@ -31,6 +43,11 @@ Frigate Guardian is a comprehensive, real-time surveillance dashboard designed t
 *   **Instant YAML:** Automatically generate perfectly formatted YAML code to paste into your Frigate `config.yml`.
 *   **Stability First:** De-duplicated event list ensures you see a single, real-time row per detection instead of hundreds of updates.
 
+### 🎬 Reliable Clip Playback
+*   **Automatic Transcoding:** H.265/HEVC event clips (common on newer 4K cameras) are transcoded to browser-compatible H.264 on the fly — Firefox/Chrome can't decode HEVC natively.
+*   **Hardware Acceleration:** Uses Intel Quick Sync (VAAPI) when available, with automatic fallback to software encoding.
+*   **Clip Caching:** Transcoded clips are cached, so replaying the same event is instant after the first view.
+
 ### 🐦 Bioacoustic Yard Intelligence
 *   **BirdNET-Go Integration:** Real-time bird species identification via high-fidelity audio analysis.
 *   **Live Audio Sentinel:** Listen to your yard in real-time with a built-in frequency spectrogram.
@@ -38,7 +55,7 @@ Frigate Guardian is a comprehensive, real-time surveillance dashboard designed t
 *   **Audio Proof:** Play back specific bird song recordings directly from your yard history.
 *   **Daily Species Sentinel:** Intelligent alerts for the first sighting of each unique species every day, preventing notification fatigue.
 
-### 🌊 Tidal Intelligence (NEW)
+### 🌊 Tidal Intelligence
 *   **CHS Predictions:** Official Canadian Hydrographic Service tide data (DFO IWLS API) — no API key required.
 *   **Multi-Station:** Track up to four stations (home, cottage, marina) and switch between them with sub-tabs.
 *   **30-Hour Curve:** Live SVG tide curve with a "now" marker, interpolated current height, and high/low markers.
@@ -53,11 +70,12 @@ Frigate Guardian is a comprehensive, real-time surveillance dashboard designed t
 ### Prerequisites
 *   A running instance of [Frigate NVR](https://frigate.video/).
 *   Node.js v22+ installed on your server.
+*   `ffmpeg` (and `ffprobe`) installed and on `PATH` — required for clip transcoding and BirdNET-Go live audio.
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/YOUR_USERNAME/Frigate-Guardian.git
-cd Frigate-Guardian
+git clone https://github.com/jchisholm59/Frigate-Guardian-Secure.git
+cd Frigate-Guardian-Secure
 npm install
 ```
 
@@ -81,11 +99,11 @@ GMAIL_RECIPIENT=your-alerts-recipient@gmail.com
 We recommend using **PM2** to keep the sentinel running 24/7 in the background:
 ```bash
 npm run build
-pm2 start dist/server.cjs --name frigate-guardian
+pm2 start dist/server.cjs --name watchtower
 ```
 
 ### 4. Running with Docker (Recommended)
-You can also run Frigate Guardian using Docker, which is the recommended way for production deployment.
+You can also run WatchTower using Docker, which is the recommended way for production deployment. It also supports Intel Quick Sync (VAAPI) hardware-accelerated clip transcoding when `/dev/dri` is available.
 
 **Quick Start:**
 1.  **Configure environment:** 
@@ -93,17 +111,17 @@ You can also run Frigate Guardian using Docker, which is the recommended way for
     - Create a file named `guardian.env` for your custom secrets (use `.env.example` as a template).
 2.  **Start the container:**
     ```bash
-    docker compose up -d
+    docker compose up -d --build
     ```
 
-The application will be available at `http://localhost:3000`.
+The application will be available at `http://localhost:8100` (configurable via the `PORT` environment variable in `docker-compose.yml`).
 
 **Persistent Data:**
 Docker will automatically create a volume to persist your settings:
-- `guardian_data`: Persists `notification_settings.json` and `mqtt_config.json` in the `/app/data` directory inside the container.
+- `guardian_data`: Persists `notification_settings.json`, `mqtt_config.json`, and the transcoded clip cache in the `/app/data` directory inside the container.
 
 **Troubleshooting & Maintenance:**
-- **View logs:** `docker logs -f frigate-guardian`
+- **View logs:** `docker compose logs -f`
 - **Restart:** `docker compose restart`
 - **Full Reset (Wipes all settings & credentials):**
   If you want to perform a truly clean install and wipe all persisted settings from the Docker volume:
@@ -137,16 +155,16 @@ Predictions are cached server-side for 10 minutes. The **Tides** tab shows the c
 ---
 
 ## 🔒 Security & Privacy
-*   **Local First:** Your passwords and configuration are stored locally in `~/.frigate-guardian` and never uploaded to the cloud.
+*   **Local First:** Your passwords and configuration are stored locally in `~/.frigate-guardian` (or `/app/data` under Docker) and never uploaded to the cloud.
 *   **Encrypted Streams:** Supports HTTPS and secure WebSocket (WSS) for camera intercepts.
 
 ---
 
 ## 🏗 Built With
 *   **Frontend:** React, Tailwind CSS, Lucide Icons, Framer Motion.
-*   **Backend:** Node.js, Express, MQTT.js, Nodemailer.
+*   **Backend:** Node.js, Express, MQTT.js, Nodemailer, FFmpeg.
 *   **AI:** Google Gemini 1.5 Flash.
-*   **Data:** BirdNET-Go (MQTT), DFO / Canadian Hydrographic Service IWLS (tides).
+*   **Data:** [Frigate NVR](https://frigate.video/) by Blake Blackshear, [BirdNET-Go](https://github.com/tphakala/birdnet-go) (MQTT) by Tomi Hakala, DFO / Canadian Hydrographic Service IWLS (tides).
 
 ---
 *Created with ❤️ for the Frigate NVR Community.*

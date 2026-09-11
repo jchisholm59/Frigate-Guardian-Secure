@@ -1,4 +1,4 @@
-# 🛠 Running Frigate Guardian on a Linux Server
+# 🛠 Running WatchTower on a Linux Server
 
 To run this application in the background so it stays alive after you log out of your server, use one of the following methods.
 
@@ -19,20 +19,22 @@ PM2 is a professional process manager. it will keep the app running forever and 
     npm run build
 
     # Step 2: Start the server with PM2
-    pm2 start dist/server.cjs --name frigate-guardian
+    pm2 start dist/server.cjs --name watchtower
     ```
 
     **Alternative: Start without building (using TS directly):**
     If you prefer not to build, use `tsx` to run the typescript file:
     ```bash
-    pm2 start "npx tsx server.ts" --name frigate-guardian
+    pm2 start "npx tsx server.ts" --name watchtower
     ```
 
 3.  **Manage the process:**
     - `pm2 status` - See if it's running.
-    - `pm2 logs frigate-guardian` - View live logs (useful for debugging alerts).
-    - `pm2 restart frigate-guardian` - Restart the app.
-    - `pm2 stop frigate-guardian` - Stop the app.
+    - `pm2 logs watchtower` - View live logs (useful for debugging alerts).
+    - `pm2 restart watchtower` - Restart the app.
+    - `pm2 stop watchtower` - Stop the app.
+
+    *If you have an existing process still running under the old `frigate-guardian` name, either keep using that name or `pm2 delete frigate-guardian` and start fresh with `--name watchtower`.*
 
 4.  **Keep it running after a reboot:**
     ```bash
@@ -43,7 +45,7 @@ PM2 is a professional process manager. it will keep the app running forever and 
 ---
 
 ## 🧠 Local AI Support (Ollama)
-Frigate Guardian now supports **local AI** using Ollama. This allows for unlimited, private, and fast event summaries and searches without needing a Google API key.
+WatchTower supports **local AI** using Ollama. This allows for unlimited, private, and fast event summaries and searches without needing a Google API key.
 
 1.  **Install Ollama** on your server: [ollama.com](https://ollama.com)
 2.  **Pull a model** (we recommend `llama3` or `mistral`):
@@ -57,7 +59,7 @@ Frigate Guardian now supports **local AI** using Ollama. This allows for unlimit
     ```
 4.  **Restart the server:**
     ```bash
-    pm2 restart frigate-guardian
+    pm2 restart watchtower
     ```
     *If no OLLAMA_URL is provided, the system will automatically fall back to Gemini.*
 
@@ -68,7 +70,7 @@ If you don't want to install extra tools, use `screen` to create a virtual termi
 
 1.  **Start a new screen session:**
     ```bash
-    screen -S frigate
+    screen -S watchtower
     ```
 
 2.  **Run the app inside the screen:**
@@ -83,13 +85,13 @@ If you don't want to install extra tools, use `screen` to create a virtual termi
 4.  **Re-attach later:**
     When you log back in, type:
     ```bash
-    screen -r frigate
+    screen -r watchtower
     ```
 
 ---
 
 ## ⚠️ Important Note on Data
-Your settings (MQTT, Gmail, etc.) are stored in `~/.frigate-guardian/`. 
+Your settings (MQTT, Gmail, etc.) are stored in `~/.frigate-guardian/` (this internal storage path is unchanged by the WatchTower rename, so existing settings carry over automatically). 
 - These files are permanent and will be used by the app regardless of whether you run it via PM2 or Screen.
 - Make sure the user running the app has permission to write to their home directory.
 

@@ -431,7 +431,7 @@ async function startServer() {
 
     console.log(`[BirdNET] Attempting connection to ${brokerUrl}...`);
 
-    const clientId = `birdnet-guardian-${Math.random().toString(16).slice(2, 8)}`;
+    const clientId = `watchtower-birdnet-${Math.random().toString(16).slice(2, 8)}`;
     const clientOptions: any = {
       clientId,
       connectTimeout: 10000,
@@ -1421,7 +1421,7 @@ Return a JSON object with:
     mqttStatus.brokerUrl = brokerUrl;
     mqttStatus.topicPrefix = prefix;
 
-    const clientId = `frigate-guardian-${Math.random().toString(16).slice(2, 8)}`;
+    const clientId = `watchtower-${Math.random().toString(16).slice(2, 8)}`;
     const clientOptions: any = {
       clientId,
       connectTimeout: 8000,
@@ -2061,7 +2061,7 @@ Return a JSON object with:
           elements: [
             {
               type: 'mrkdwn',
-              text: `⏱ *Event Time:* ${new Date(event.startTime || Date.now()).toLocaleString()} | *System:* Frigate Guardian`,
+              text: `⏱ *Event Time:* ${new Date(event.startTime || Date.now()).toLocaleString()} | *System:* WatchTower`,
             },
           ],
         },
@@ -2167,7 +2167,7 @@ Return a JSON object with:
           color,
           fields,
           timestamp: new Date(event.startTime || Date.now()).toISOString(),
-          footer: { text: 'Frigate Guardian NVR Surveillance Hub' },
+          footer: { text: 'WatchTower NVR Surveillance Hub' },
         },
       ],
     };
@@ -2218,7 +2218,7 @@ Return a JSON object with:
     const smtpUser = process.env.GMAIL_USER || config.smtpUser;
     const smtpPassword = process.env.GMAIL_PASSWORD || config.smtpPassword;
     const recipients = (process.env.GMAIL_RECIPIENT || config.recipientEmail || '').trim();
-    const senderName = process.env.GMAIL_SENDER_NAME || config.senderName || 'Frigate Guardian NVR';
+    const senderName = process.env.GMAIL_SENDER_NAME || config.senderName || 'WatchTower NVR';
 
     if (!recipients) {
       throw new Error('Recipient email address is required');
@@ -2331,7 +2331,7 @@ Return a JSON object with:
       ` : ''}
     </div>
     <div class="footer">
-      Event Time: ${new Date(event.startTime || Date.now()).toLocaleString()} • Frigate Guardian Surveillance Console
+      Event Time: ${new Date(event.startTime || Date.now()).toLocaleString()} • WatchTower Surveillance Console
     </div>
   </div>
 </body>
@@ -2637,13 +2637,13 @@ Return a JSON object with:
   // Download Zipped Project endpoint
   app.get(['/api/download-zip', '/download-zip'], (_req, res) => {
     try {
-      const staticZip = path.join(process.cwd(), 'public', 'frigate-guardian-project.zip');
+      const staticZip = path.join(process.cwd(), 'public', 'watchtower-project.zip');
       if (fs.existsSync(staticZip)) {
-        return res.download(staticZip, 'frigate-guardian-project.zip');
+        return res.download(staticZip, 'watchtower-project.zip');
       }
 
       res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', 'attachment; filename="frigate-guardian-project.zip"');
+      res.setHeader('Content-Disposition', 'attachment; filename="watchtower-project.zip"');
 
       // archiver v8 export compatibility
       const archive = typeof archiver === 'function' 

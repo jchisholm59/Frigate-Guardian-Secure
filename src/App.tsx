@@ -18,6 +18,7 @@ import { LiveGrid } from './components/LiveGrid';
 import { EventsReview } from './components/EventsReview';
 import { ZoneEditor } from './components/ZoneEditor';
 import { BirdSightingsView } from './components/BirdSightingsView';
+import { TideView } from './components/TideView';
 import { ConfigStudio } from './components/ConfigStudio';
 import { SystemTelemetry } from './components/SystemTelemetry';
 import { CameraDetailModal } from './components/CameraDetailModal';
@@ -68,7 +69,7 @@ export default function App() {
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>(() => {
     try {
       const saved = localStorage.getItem('frigate_notification_settings');
-      if (saved) return JSON.parse(saved);
+      if (saved) return { ...DEFAULT_NOTIFICATION_SETTINGS, ...JSON.parse(saved) };
     } catch (e) {}
     return DEFAULT_NOTIFICATION_SETTINGS;
   });
@@ -192,6 +193,7 @@ export default function App() {
   const [isHostModalOpen, setIsHostModalOpen] = useState(false);
   const [isAiSearchModalOpen, setIsAiSearchModalOpen] = useState(false);
   const [activeAlarmAlert, setActiveAlarmAlert] = useState<string | null>(null);
+  const [tideAlert, setTideAlert] = useState<string | null>(null);
   const [notificationToast, setNotificationToast] = useState<string | null>(null);
 
   // Persist servers
@@ -396,6 +398,9 @@ export default function App() {
             setMqttStatus(payload.status);
           } else if (payload.type === 'bird_sighting' && payload.sighting) {
             setBirdSightings((prev) => [payload.sighting, ...prev].slice(0, 500));
+          } else if (payload.type === 'tide_alert' && payload.summary) {
+            setTideAlert(payload.summary);
+            setTimeout(() => setTideAlert(null), 15000);
           } else if (payload.type === 'frigate_event' && payload.event) {
             const newEvt: FrigateEvent = payload.event;
 
@@ -637,6 +642,31 @@ export default function App() {
         onTriggerSimulatedAlarm={handleTriggerSimulatedAlarm}
       />
 
+      {/* Tide Alert Toast Banner */}
+      {tideAlert && (
+        <div className="bg-cyan-950/90 border-b border-cyan-500/50 text-white px-6 py-3 shadow-2xl flex items-center text-xs animate-in slide-in-from-top">
+          <div className="flex items-center gap-3 max-w-7xl mx-auto w-full">
+            <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping shrink-0" />
+            <span className="font-black tracking-wider uppercase text-cyan-100">🌊 {tideAlert}</span>
+            <button
+              onClick={() => {
+                setActiveTab('tides');
+                setTideAlert(null);
+              }}
+              className="ml-auto underline uppercase tracking-widest text-[11px] font-bold text-white hover:text-cyan-200"
+            >
+              View Tides →
+            </button>
+            <button
+              onClick={() => setTideAlert(null)}
+              className="ml-4 p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Emergency Alarm Toast Banner */}
       {activeAlarmAlert && (
         <div className="bg-red-950/90 border-b border-red-500/50 text-white px-6 py-3 shadow-2xl flex items-center justify-between text-xs animate-in slide-in-from-top">
@@ -713,6 +743,13 @@ export default function App() {
             onClear={() => {
               fetch('/api/birds/clear', { method: 'POST' }).then(() => setBirdSightings([]));
             }}
+          />
+        )}
+
+        {activeTab === 'tides' && (
+          <TideView
+            config={notificationSettings.tides}
+            onGoToSettings={() => setActiveTab('notifications')}
           />
         )}
 

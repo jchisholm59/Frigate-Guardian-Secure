@@ -14,6 +14,7 @@ import {
   Zap,
   Palette,
   Bird,
+  Waves,
 } from 'lucide-react';
 import { ActiveTab, SystemTelemetryData, MqttStatusInfo, NotificationSettings, AppTheme } from '../types';
 
@@ -211,6 +212,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               <Bird className="w-3.5 h-3.5 text-blue-400" />
               <span>Birds</span>
+            </button>
+
+            <button
+              id="nav-tab-tides"
+              onClick={() => setActiveTab('tides')}
+              className={`flex items-center gap-2 px-4 py-2 text-xs uppercase tracking-wider font-black rounded-xl transition-all ${
+                activeTab === 'tides'
+                  ? 'bg-white text-slate-950 shadow-md font-black'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/70 border border-transparent'
+              }`}
+            >
+              <Waves className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Tides</span>
             </button>
 
             <button

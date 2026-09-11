@@ -12,6 +12,7 @@ import { GoogleGenAI } from '@google/genai';
 import mqtt, { type MqttClient } from 'mqtt';
 import { Readable, Transform } from 'stream';
 import nodemailer from 'nodemailer';
+import { createTideService } from './tides';
 
 // In-Memory HEVC (H.265) binary patcher to convert 'hev1' containers to Apple-compatible 'hvc1' containers
 class HevcPatchStream extends Transform {
@@ -113,6 +114,13 @@ let persistentSettings: any = {
     username: '',
     password: '',
     sendDailyAlerts: false
+  },
+  tides: {
+    enabled: false,
+    stations: [],
+    units: 'm',
+    refreshIntervalMinutes: 15,
+    alerts: { enabled: false, channels: [], minutesBefore: 60, events: ['high', 'low'] }
   }
 };
 
@@ -1205,6 +1213,14 @@ Return a JSON object with:
       }
     }
   }
+
+  // Tide service (DFO / CHS) — routes + high/low alert scheduler
+  const tideService = createTideService({
+    getSettings: () => persistentSettings,
+    broadcastToSse,
+  });
+  tideService.registerRoutes(app);
+  tideService.startScheduler();
 
   function connectToMqtt() {
     if (!activeMqttConfig.brokerHost) return;

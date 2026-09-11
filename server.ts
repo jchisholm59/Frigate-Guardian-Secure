@@ -1916,6 +1916,7 @@ Return a JSON object with:
     // H.264 (or codec could not be determined) — cheap passthrough with range support.
     const requester = fullUrl.startsWith('https') ? https : http;
 
+    const pipeStartedAt = Date.now();
     console.log(`[Clip Proxy] Piping event clip from: ${fullUrl} (Range: ${req.headers.range || 'none'})`);
 
     const options = {
@@ -1927,18 +1928,27 @@ Return a JSON object with:
       options.headers['Range'] = req.headers.range;
     }
 
+    let pipeFinished = false;
+    res.on('finish', () => {
+      pipeFinished = true;
+      console.log(`[Clip Proxy] Finished piping ${eventId} in ${Date.now() - pipeStartedAt}ms`);
+    });
+
     const proxyReq = requester.request(fullUrl, options, (proxyRes) => {
       res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
       proxyRes.pipe(res);
     });
 
     proxyReq.on('error', (err) => {
-      console.error(`[Clip Proxy] Error proxying clip: ${err.message}`);
+      console.error(`[Clip Proxy] Error proxying clip after ${Date.now() - pipeStartedAt}ms: ${err.message}`);
       if (!res.headersSent) res.status(502).send('Error proxying event clip');
     });
 
     req.on('close', () => {
       proxyReq.destroy();
+      if (!pipeFinished) {
+        console.warn(`[Clip Proxy] Client disconnected before finishing ${eventId} after ${Date.now() - pipeStartedAt}ms (likely aborted/stalled)`);
+      }
     });
 
     proxyReq.end();

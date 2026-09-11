@@ -73,6 +73,10 @@ function transcodeToFile(url: string, outPath: string): Promise<void> {
     const ffmpeg = spawn('ffmpeg', [
       '-y',
       '-i', url,
+      // Cap at 1080p — event review doesn't need native 4K, and downscaling
+      // roughly quarters the pixel count (and encode time) for cameras like
+      // the Tapo C560WS. min() keeps lower-resolution sources untouched.
+      '-vf', "scale='min(1920,iw)':-2",
       '-c:v', 'libx264',
       '-preset', 'veryfast',
       '-crf', '23',

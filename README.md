@@ -74,8 +74,8 @@ If you find WatchTower useful, consider starring and supporting those projects d
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/jchisholm59/Frigate-Guardian-Secure.git
-cd Frigate-Guardian-Secure
+git clone https://github.com/jchisholm59/WatchTower.git
+cd WatchTower
 npm install
 ```
 

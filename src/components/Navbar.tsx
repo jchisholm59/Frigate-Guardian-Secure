@@ -78,7 +78,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     setIsDownloading(true);
     try {
       // First try direct prebuilt static asset, fallback to /api/download-zip
-      let res = await fetch('/frigate-guardian-project.zip');
+      let res = await fetch('/watchtower-project.zip');
       if (!res.ok) {
         res = await fetch('/api/download-zip');
       }
@@ -89,7 +89,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'frigate-guardian-project.zip';
+      link.download = 'watchtower-project.zip';
       document.body.appendChild(link);
       link.click();
       window.URL.revokeObjectURL(url);

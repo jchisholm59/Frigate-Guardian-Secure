@@ -1,5 +1,5 @@
 {
-  "name": "Frigate NVR",
+  "name": "WatchTower",
   "description": "Comprehensive surveillance hub and AI object detection console for Frigate NVR with live camera feeds, event timeline, zone editor, multi-channel Gmail, Slack, and Discord event notifications, and camera stream management.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

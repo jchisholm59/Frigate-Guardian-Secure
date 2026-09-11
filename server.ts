@@ -104,6 +104,10 @@ function transcodeToFileVaapi(url: string, outPath: string): Promise<void> {
     '-i', url,
     '-vf', "scale_vaapi=w='min(1920,iw)':h=-2",
     '-c:v', 'h264_vaapi',
+    // Gen12+ Intel iGPUs (Xe-LP, e.g. Raptor Lake) only expose the low-power
+    // VAAPI encode entrypoint (VAEntrypointEncSliceLP) for H.264 — the
+    // encoder can't init against the regular entrypoint on this hardware.
+    '-low_power', '1',
     '-b:v', '4M',
     '-c:a', 'aac',
     '-movflags', '+faststart',
@@ -141,14 +145,18 @@ function transcodeToFileSoftware(url: string, outPath: string): Promise<void> {
 // only cost the speed advantage.
 async function transcodeToFile(url: string, outPath: string): Promise<void> {
   if (hasVaapiDevice()) {
+    const startedAt = Date.now();
     try {
       await transcodeToFileVaapi(url, outPath);
+      console.log(`[Clip Transcode] VAAPI hardware encode finished in ${Date.now() - startedAt}ms`);
       return;
     } catch (err) {
-      console.error(`[Clip Transcode] VAAPI hardware encode failed, falling back to software: ${(err as Error).message}`);
+      console.error(`[Clip Transcode] VAAPI hardware encode failed after ${Date.now() - startedAt}ms, falling back to software: ${(err as Error).message}`);
     }
   }
-  return transcodeToFileSoftware(url, outPath);
+  const startedAt = Date.now();
+  await transcodeToFileSoftware(url, outPath);
+  console.log(`[Clip Transcode] Software encode finished in ${Date.now() - startedAt}ms`);
 }
 
 // Serve a local file with HTTP Range support (206 Partial Content), so the
@@ -1877,7 +1885,9 @@ Return a JSON object with:
 
     const fullUrl = `${(serverUrl as string).replace(/\/$/, '')}/api/events/${eventId}/clip.mp4`;
 
+    const probeStartedAt = Date.now();
     const codec = await probeVideoCodec(fullUrl);
+    console.log(`[Clip Proxy] Codec probe (${codec ?? 'unknown'}) finished in ${Date.now() - probeStartedAt}ms`);
 
     if (codec === 'hevc') {
       // Firefox/Chrome cannot decode H.265 at all, so transcode to H.264.

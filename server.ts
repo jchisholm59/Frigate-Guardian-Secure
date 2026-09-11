@@ -17,7 +17,7 @@ import { createTideService } from './tides';
 // Probe an event clip's video codec via ffprobe so we only pay the transcode
 // cost for H.265 clips (Firefox/Chrome cannot decode HEVC at all, regardless
 // of container tags — relabeling the codec box is not sufficient).
-function probeVideoCodec(url: string, timeoutMs = 6000): Promise<string | null> {
+function probeVideoCodecOnce(url: string, timeoutMs: number): Promise<{ codec: string | null; timedOut: boolean }> {
   return new Promise((resolve) => {
     const probe = spawn('ffprobe', [
       '-v', 'error',
@@ -30,20 +30,20 @@ function probeVideoCodec(url: string, timeoutMs = 6000): Promise<string | null> 
     let errOut = '';
     let settled = false;
 
-    const finish = (result: string | null) => {
+    const finish = (result: string | null, timedOut = false) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve(result);
+      resolve({ codec: result, timedOut });
     };
 
-    // If ffprobe is missing, hangs, or is just slow (a stuck probe must never
-    // block clip playback), give up after timeoutMs and fall back to
-    // passthrough rather than stalling the request indefinitely.
+    // A stuck probe must never block clip playback, so give up after
+    // timeoutMs. This alone must never fall back to a raw passthrough
+    // though — for an HEVC source that ships undecoded video straight to a
+    // browser that can't play it at all — see probeVideoCodec's retry.
     const timer = setTimeout(() => {
-      console.error(`[Clip Proxy] ffprobe timed out after ${timeoutMs}ms, falling back to passthrough: ${url}`);
       probe.kill('SIGKILL');
-      finish(null);
+      finish(null, true);
     }, timeoutMs);
 
     probe.stdout.on('data', (d) => { out += d.toString(); });
@@ -59,6 +59,25 @@ function probeVideoCodec(url: string, timeoutMs = 6000): Promise<string | null> 
       finish(out.trim() || null);
     });
   });
+}
+
+// Frigate can take longer than a first-attempt timeout to finish preparing a
+// clip right after an event ends — especially on a 4K source — so a timeout
+// on the first probe usually means "not ready yet", not "broken". Treating
+// that the same as a real probe failure (falling back to raw passthrough)
+// is silently fatal for HEVC sources, since the browser then receives
+// undecoded H.265 it can never play, with no error to explain why. Retry
+// once with a longer budget before actually giving up.
+async function probeVideoCodec(url: string): Promise<string | null> {
+  const first = await probeVideoCodecOnce(url, 6000);
+  if (!first.timedOut) return first.codec;
+
+  console.warn(`[Clip Proxy] ffprobe timed out after 6000ms (clip likely still being finalized by Frigate), retrying once with a longer timeout: ${url}`);
+  const second = await probeVideoCodecOnce(url, 15000);
+  if (second.timedOut) {
+    console.error(`[Clip Proxy] ffprobe timed out again after 15000ms, falling back to passthrough: ${url}`);
+  }
+  return second.codec;
 }
 
 const VAAPI_DEVICE = '/dev/dri/renderD128';

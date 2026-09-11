@@ -350,6 +350,18 @@ export default function App() {
     [activeServer, dummyCamerasEnabled]
   );
 
+  // Auto-sync cameras & events for the active real server on boot (and
+  // whenever the active server changes) — without this, a fresh page load
+  // shows whatever `events` initialized to (the hardcoded demo array) until
+  // something manually triggers a resync, leaving demo events mixed in
+  // indefinitely with real ones pushed in live via MQTT.
+  useEffect(() => {
+    if (activeServer && !activeServer.isSimulated && activeServer.id !== 'no-server') {
+      handleSyncServerCameras(activeServer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeServerId]);
+
   // Server selection handler
   const handleSelectServer = (serverId: string) => {
     setActiveServerId(serverId);

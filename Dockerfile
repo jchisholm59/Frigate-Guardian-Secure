@@ -21,8 +21,9 @@ COPY . .
 # Build the frontend and bundle the server
 RUN npm run build
 
-# Expose the default port
-EXPOSE 3000
+# Expose the default port (informational only — docker-compose.yml uses
+# network_mode: host, so the actual bind port is whatever PORT is set to there)
+EXPOSE 8100
 
 # Start the application
 CMD ["npm", "start"]

@@ -6,7 +6,7 @@ services:
     network_mode: host
     privileged: true
     environment:
-      - PORT=3000
+      - PORT=8100
       - DATA_DIR=/app/data
       - NODE_ENV=production
       # - GEMINI_API_KEY=your-api-key-here

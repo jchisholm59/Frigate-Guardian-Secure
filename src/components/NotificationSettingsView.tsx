@@ -328,6 +328,20 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
     updateFilters({ targetLabels: updated });
   };
 
+  // selectedCameras is an allow-list: empty means "notify for every camera".
+  // Toggling a camera off when the list is currently empty seeds it with
+  // every OTHER known camera, so that one camera becomes the only one muted
+  // instead of jumping straight to "only this camera notifies".
+  const toggleSelectedCamera = (cameraId: string) => {
+    const current = localSettings.filters.selectedCameras && localSettings.filters.selectedCameras.length > 0
+      ? localSettings.filters.selectedCameras
+      : availableCameras.map((c) => c.id);
+    const updated = current.includes(cameraId)
+      ? current.filter((c) => c !== cameraId)
+      : [...current, cameraId];
+    updateFilters({ selectedCameras: updated });
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Banner & Channel Switcher */}
@@ -1381,6 +1395,52 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
               Only events containing at least one selected target label will trigger notifications.
             </p>
           </div>
+
+          {/* Per-Camera Notifications */}
+          {availableCameras.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                  Camera Notifications
+                </label>
+                {localSettings.filters.selectedCameras && localSettings.filters.selectedCameras.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => updateFilters({ selectedCameras: [] })}
+                    className="text-[10px] uppercase font-bold tracking-wider text-slate-500 hover:text-white"
+                  >
+                    Enable All
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {availableCameras.map((cam) => {
+                  const isEnabled = !localSettings.filters.selectedCameras
+                    || localSettings.filters.selectedCameras.length === 0
+                    || localSettings.filters.selectedCameras.includes(cam.id);
+                  return (
+                    <button
+                      key={cam.id}
+                      type="button"
+                      onClick={() => toggleSelectedCamera(cam.id)}
+                      className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider border transition-all ${
+                        isEnabled
+                          ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                          : 'bg-slate-900 border-slate-800 text-slate-500 hover:text-white'
+                      }`}
+                      title={isEnabled ? 'Notifications enabled — click to mute this camera' : 'Notifications muted — click to enable'}
+                    >
+                      <span>{cam.name}</span>
+                      <span className="text-[10px] ml-1">{isEnabled ? '🔔' : '🔕'}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-slate-500">
+                Muted cameras are excluded from Gmail/Slack/Discord notifications, but still record and appear in Review.
+              </p>
+            </div>
+          )}
 
           {/* Cooldown Timer */}
           <div className="space-y-2">

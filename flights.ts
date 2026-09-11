@@ -30,6 +30,18 @@ interface CacheEntry<T> {
   ts: number;
 }
 
+// Accepts just a host/IP (the common case — "192.168.1.x") and builds the
+// standard PiAware/dump1090-fa SD-card-image path, but passes a full URL
+// through unchanged if one was given (covers non-default install layouts,
+// e.g. a bare `dump1090-fa` apt install serving from a different path).
+function normalizePiawareInput(input: string): string {
+  const trimmed = input.trim().replace(/\/$/, '');
+  if (!trimmed) return trimmed;
+  if (/aircraft\.json(\?|$)/i.test(trimmed)) return trimmed;
+  const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  return `${withScheme}/skyaware/data/aircraft.json`;
+}
+
 function toRad(deg: number): number {
   return (deg * Math.PI) / 180;
 }
@@ -121,7 +133,7 @@ export function createFlightService(deps: FlightServiceDeps) {
         const homeLon = Number(cfg.homeLon) || 0;
 
         try {
-          const raw = await fetchAircraftJson(cfg.piawareUrl);
+          const raw = await fetchAircraftJson(normalizePiawareInput(cfg.piawareUrl));
           const aircraft = raw
             .filter((a) => typeof a.lat === 'number' && typeof a.lon === 'number')
             .map((a) => {
@@ -200,15 +212,16 @@ export function createFlightService(deps: FlightServiceDeps) {
       });
 
       app.post('/api/flights/test', async (req: Request, res: Response) => {
-        const url = String(req.body?.piawareUrl || '').trim();
-        if (!url) {
-          return res.status(400).json({ success: false, error: 'PiAware URL is required' });
+        const input = String(req.body?.piawareUrl || '').trim();
+        if (!input) {
+          return res.status(400).json({ success: false, error: 'PiAware address is required' });
         }
+        const url = normalizePiawareInput(input);
         try {
           const aircraft = await fetchAircraftJson(url);
-          res.json({ success: true, aircraftCount: aircraft.length });
+          res.json({ success: true, aircraftCount: aircraft.length, resolvedUrl: url });
         } catch (e: any) {
-          res.json({ success: false, error: e.message || 'Could not reach that URL' });
+          res.json({ success: false, error: e.message || 'Could not reach that URL', resolvedUrl: url });
         }
       });
     },

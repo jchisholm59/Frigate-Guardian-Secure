@@ -235,9 +235,15 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
       });
       const data = await resp.json();
       if (data.success) {
-        setFlightsTestResult({ success: true, message: `Connected — ${data.aircraftCount} aircraft currently reporting.` });
+        setFlightsTestResult({
+          success: true,
+          message: `Connected to ${data.resolvedUrl} — ${data.aircraftCount} aircraft currently reporting.`,
+        });
       } else {
-        setFlightsTestResult({ success: false, message: data.error || 'Could not reach that URL.' });
+        setFlightsTestResult({
+          success: false,
+          message: `${data.error || 'Could not reach that address.'}${data.resolvedUrl ? ` (tried ${data.resolvedUrl})` : ''}`,
+        });
       }
     } catch {
       setFlightsTestResult({ success: false, message: 'Network error reaching the server.' });
@@ -1375,14 +1381,18 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
           </div>
 
           <div className="space-y-1.5">
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">PiAware Data URL</label>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">PiAware Receiver Address</label>
             <input
               type="text"
-              placeholder="http://192.168.1.xxx/skyaware/data/aircraft.json"
+              placeholder="192.168.1.xxx"
               value={flights.piawareUrl}
               onChange={(e) => updateFlights({ piawareUrl: e.target.value })}
               className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-700 focus:outline-none focus:border-amber-500"
             />
+            <p className="text-[10px] text-slate-600">
+              Just the IP address — WatchTower fills in the rest (<code>/skyaware/data/aircraft.json</code>). A full URL
+              also works if your install uses a different path.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

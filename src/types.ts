@@ -203,7 +203,7 @@ export interface NotificationSettings {
 
 export interface FlightsConfig {
   enabled: boolean;
-  /** Full URL to the receiver's aircraft.json, e.g. http://192.168.1.x/skyaware/data/aircraft.json */
+  /** Receiver IP/host (e.g. "192.168.1.x") or a full aircraft.json URL for non-default installs */
   piawareUrl: string;
   homeLat: number;
   homeLon: number;

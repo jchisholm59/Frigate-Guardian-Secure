@@ -44,17 +44,26 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  // Tracks which clipUrl is currently loaded into the <video>. Reading
+  // video.src back from the DOM always returns the browser-resolved
+  // ABSOLUTE URL, never the relative clipUrl string we set it to — comparing
+  // against that directly is always unequal, causing video.load() to fire
+  // (and restart the fetch from scratch) on every unrelated state change
+  // (play/pause, speed change), which looks like the clip randomly stalling.
+  const loadedUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
       setIsPlaying(false);
       setCurrentTime(0);
       setVideoError(false);
+      loadedUrlRef.current = null;
       return;
     }
     setIsPlaying(true);
     setCurrentTime(0);
     setVideoError(false);
+    loadedUrlRef.current = null;
   }, [isOpen, event]);
 
   // Video element sync
@@ -64,9 +73,10 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
 
     video.playbackRate = speed;
 
-    // Explicitly load the video when the source changes
-    // This ensures the browser re-evaluates the stream headers (important for our proxy)
-    if (event?.clipUrl && video.src !== event.clipUrl) {
+    // Only (re)load when the clip actually changes, not on every play/pause
+    // or speed toggle.
+    if (event?.clipUrl && loadedUrlRef.current !== event.clipUrl) {
+      loadedUrlRef.current = event.clipUrl;
       video.load();
     }
 
@@ -77,7 +87,7 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
     } else {
       video.pause();
     }
-  }, [isPlaying, speed, videoError]);
+  }, [isPlaying, speed, videoError, event?.clipUrl]);
 
   // Simulated 10-second canvas playback loop if no real video or in simulation
   useEffect(() => {

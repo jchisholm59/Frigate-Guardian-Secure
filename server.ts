@@ -61,31 +61,19 @@ function probeVideoCodec(url: string, timeoutMs = 6000): Promise<string | null> 
   });
 }
 
-// Transcode a source clip to a real H.264 file on disk. Writing a complete,
-// non-fragmented MP4 (rather than piping a fragmented stream to the response)
-// avoids relying on ffmpeg flushing MP4 fragments at keyframe boundaries —
-// on a high-resolution source (e.g. 4K) with a default (long) keyframe
-// interval, that flush can be delayed long enough that the browser never
-// receives playable data in time and gives up.
-function transcodeToFile(url: string, outPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tmpPath = `${outPath}.tmp-${process.pid}-${Date.now()}`;
-    const ffmpeg = spawn('ffmpeg', [
-      '-y',
-      '-i', url,
-      // Cap at 1080p — event review doesn't need native 4K, and downscaling
-      // roughly quarters the pixel count (and encode time) for cameras like
-      // the Tapo C560WS. min() keeps lower-resolution sources untouched.
-      '-vf', "scale='min(1920,iw)':-2",
-      '-c:v', 'libx264',
-      '-preset', 'veryfast',
-      '-crf', '23',
-      '-c:a', 'aac',
-      '-movflags', '+faststart',
-      '-f', 'mp4',
-      tmpPath,
-    ]);
+const VAAPI_DEVICE = '/dev/dri/renderD128';
+let vaapiAvailable: boolean | null = null;
+function hasVaapiDevice(): boolean {
+  if (vaapiAvailable === null) {
+    vaapiAvailable = fs.existsSync(VAAPI_DEVICE);
+    console.log(`[Clip Transcode] VAAPI hardware device ${vaapiAvailable ? 'found' : 'not found'} at ${VAAPI_DEVICE}`);
+  }
+  return vaapiAvailable;
+}
 
+function runFfmpeg(args: string[], tmpPath: string, outPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const ffmpeg = spawn('ffmpeg', args);
     let stderr = '';
     ffmpeg.stderr.on('data', (d) => { stderr += d.toString(); });
     ffmpeg.on('error', (err) => {
@@ -101,6 +89,66 @@ function transcodeToFile(url: string, outPath: string): Promise<void> {
       }
     });
   });
+}
+
+// Cap at 1080p — event review doesn't need native 4K, and downscaling roughly
+// quarters the pixel count (and encode time) for cameras like the Tapo
+// C560WS. min() keeps lower-resolution sources untouched.
+function transcodeToFileVaapi(url: string, outPath: string): Promise<void> {
+  const tmpPath = `${outPath}.tmp-${process.pid}-${Date.now()}`;
+  return runFfmpeg([
+    '-y',
+    '-hwaccel', 'vaapi',
+    '-hwaccel_output_format', 'vaapi',
+    '-vaapi_device', VAAPI_DEVICE,
+    '-i', url,
+    '-vf', "scale_vaapi=w='min(1920,iw)':h=-2",
+    '-c:v', 'h264_vaapi',
+    '-b:v', '4M',
+    '-c:a', 'aac',
+    '-movflags', '+faststart',
+    '-f', 'mp4',
+    tmpPath,
+  ], tmpPath, outPath);
+}
+
+function transcodeToFileSoftware(url: string, outPath: string): Promise<void> {
+  const tmpPath = `${outPath}.tmp-${process.pid}-${Date.now()}`;
+  return runFfmpeg([
+    '-y',
+    '-i', url,
+    '-vf', "scale='min(1920,iw)':-2",
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-crf', '23',
+    '-c:a', 'aac',
+    '-movflags', '+faststart',
+    '-f', 'mp4',
+    tmpPath,
+  ], tmpPath, outPath);
+}
+
+// Transcode a source clip to a real H.264 file on disk. Writing a complete,
+// non-fragmented MP4 (rather than piping a fragmented stream to the response)
+// avoids relying on ffmpeg flushing MP4 fragments at keyframe boundaries —
+// on a high-resolution source (e.g. 4K) with a default (long) keyframe
+// interval, that flush can be delayed long enough that the browser never
+// receives playable data in time and gives up.
+//
+// Tries Intel Quick Sync (VAAPI) hardware encoding first when a render
+// device is present, and falls back to the software encoder on any hardware
+// failure — a broken or unsupported VAAPI setup must never break playback,
+// only cost the speed advantage.
+async function transcodeToFile(url: string, outPath: string): Promise<void> {
+  if (hasVaapiDevice()) {
+    try {
+      await transcodeToFileVaapi(url, outPath);
+      return;
+    } catch (err) {
+      console.error(`[Clip Transcode] VAAPI hardware encode failed, falling back to software: ${(err as Error).message}`);
+    }
+  }
+  return transcodeToFileSoftware(url, outPath);
 }
 
 // Serve a local file with HTTP Range support (206 Partial Content), so the

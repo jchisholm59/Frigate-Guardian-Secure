@@ -6,8 +6,11 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies and FFmpeg for audio relay
-RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+# Install FFmpeg (audio relay + clip transcoding) and the Intel VAAPI driver
+# so clip transcoding can use Quick Sync hardware encoding on Intel hosts
+# (e.g. a NUC) when /dev/dri is passed through. Falls back to software
+# encoding automatically if the driver or device isn't available.
+RUN apt-get update && apt-get install -y ffmpeg intel-media-va-driver vainfo && rm -rf /var/lib/apt/lists/*
 
 # Install npm dependencies
 RUN npm install

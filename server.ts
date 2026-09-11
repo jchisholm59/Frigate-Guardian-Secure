@@ -5,6 +5,7 @@ import https from 'https';
 import path from 'path';
 import fs from 'fs';
 import { execSync, spawn } from 'child_process';
+import crypto from 'crypto';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { createRequire } from 'module';
 import { createServer as createViteServer } from 'vite';
@@ -60,6 +61,67 @@ function probeVideoCodec(url: string, timeoutMs = 6000): Promise<string | null> 
   });
 }
 
+// Transcode a source clip to a real H.264 file on disk. Writing a complete,
+// non-fragmented MP4 (rather than piping a fragmented stream to the response)
+// avoids relying on ffmpeg flushing MP4 fragments at keyframe boundaries —
+// on a high-resolution source (e.g. 4K) with a default (long) keyframe
+// interval, that flush can be delayed long enough that the browser never
+// receives playable data in time and gives up.
+function transcodeToFile(url: string, outPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const tmpPath = `${outPath}.tmp-${process.pid}-${Date.now()}`;
+    const ffmpeg = spawn('ffmpeg', [
+      '-y',
+      '-i', url,
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '23',
+      '-c:a', 'aac',
+      '-movflags', '+faststart',
+      '-f', 'mp4',
+      tmpPath,
+    ]);
+
+    let stderr = '';
+    ffmpeg.stderr.on('data', (d) => { stderr += d.toString(); });
+    ffmpeg.on('error', (err) => {
+      fs.unlink(tmpPath, () => {});
+      reject(err);
+    });
+    ffmpeg.on('close', (code) => {
+      if (code === 0) {
+        fs.rename(tmpPath, outPath, (err) => (err ? reject(err) : resolve()));
+      } else {
+        fs.unlink(tmpPath, () => {});
+        reject(new Error(`ffmpeg exited with code ${code}: ${stderr.slice(-500)}`));
+      }
+    });
+  });
+}
+
+// Serve a local file with HTTP Range support (206 Partial Content), so the
+// 10-second scrubber works on transcoded/cached clips too.
+function serveFileWithRange(req: express.Request, res: express.Response, filePath: string, contentType: string) {
+  const stat = fs.statSync(filePath);
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Accept-Ranges', 'bytes');
+
+  const range = req.headers.range;
+  if (range) {
+    const match = /bytes=(\d+)-(\d*)/.exec(range);
+    const start = match ? parseInt(match[1], 10) : 0;
+    const end = match && match[2] ? parseInt(match[2], 10) : stat.size - 1;
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+      'Content-Length': end - start + 1,
+    });
+    fs.createReadStream(filePath, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, { 'Content-Length': stat.size });
+    fs.createReadStream(filePath).pipe(res);
+  }
+}
+
 // Environment compatibility for ESM (tsx dev) and CJS (esbuild prod bundle).
 // esbuild rewrites `import.meta` to `{}` in the CJS build, so `import.meta.url`
 // is falsy there and we fall back to the process working directory.
@@ -83,6 +145,11 @@ let aiClient: GoogleGenAI | null = null;
 // Server-side persistent settings for background notifications
 const DATA_DIR = process.env.DATA_DIR || path.join(process.env.HOME || process.env.USERPROFILE || '/tmp', '.frigate-guardian');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+// Cache for transcoded (HEVC -> H.264) event clips, keyed by source URL so
+// replaying the same event doesn't re-transcode it every time.
+const CLIP_CACHE_DIR = path.join(DATA_DIR, 'clip_cache');
+if (!fs.existsSync(CLIP_CACHE_DIR)) fs.mkdirSync(CLIP_CACHE_DIR, { recursive: true });
 
 const SETTINGS_FILE = path.join(DATA_DIR, 'notification_settings.json');
 const MQTT_CONFIG_FILE = path.join(DATA_DIR, 'mqtt_config.json');
@@ -1761,36 +1828,26 @@ Return a JSON object with:
     const codec = await probeVideoCodec(fullUrl);
 
     if (codec === 'hevc') {
-      // Firefox/Chrome cannot decode H.265 at all, so transcode to H.264 on the
-      // fly. Range seeking isn't supported on the transcoded stream (ffmpeg's
-      // output length isn't known up front), but frag_keyframe+faststart lets
-      // the browser start playback as soon as the first fragment arrives.
-      console.log(`[Clip Proxy] Transcoding HEVC clip to H.264 for browser playback: ${fullUrl}`);
-      res.setHeader('Content-Type', 'video/mp4');
-      res.setHeader('Accept-Ranges', 'none');
+      // Firefox/Chrome cannot decode H.265 at all, so transcode to H.264.
+      // A high-resolution source (e.g. a 4K camera) can take longer to
+      // encode than a fragmented streaming response can tolerate — ffmpeg
+      // only flushes MP4 fragments at keyframe boundaries, so the browser
+      // can end up waiting past its own load timeout for the first bytes.
+      // Transcoding to a complete file first (cached by source URL so a
+      // replay is instant) sidesteps that entirely.
+      const cacheKey = crypto.createHash('sha1').update(fullUrl).digest('hex');
+      const cachedPath = path.join(CLIP_CACHE_DIR, `${cacheKey}.mp4`);
 
-      const ffmpeg = spawn('ffmpeg', [
-        '-i', fullUrl,
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-crf', '23',
-        '-c:a', 'aac',
-        '-movflags', 'frag_keyframe+empty_moov+faststart',
-        '-f', 'mp4',
-        'pipe:1',
-      ]);
-
-      ffmpeg.stdout.pipe(res);
-      ffmpeg.stderr.on('data', (data) => {
-        console.error(`[Clip Transcode] ${data.toString().trim()}`);
-      });
-      ffmpeg.on('error', (err) => {
-        console.error(`[Clip Proxy] ffmpeg spawn error: ${err.message}`);
+      try {
+        if (!fs.existsSync(cachedPath)) {
+          console.log(`[Clip Proxy] Transcoding HEVC clip to H.264: ${fullUrl}`);
+          await transcodeToFile(fullUrl, cachedPath);
+        }
+        serveFileWithRange(req, res, cachedPath, 'video/mp4');
+      } catch (err) {
+        console.error(`[Clip Proxy] Transcode failed: ${(err as Error).message}`);
         if (!res.headersSent) res.status(502).send('Error transcoding event clip');
-      });
-      req.on('close', () => {
-        ffmpeg.kill('SIGKILL');
-      });
+      }
       return;
     }
 

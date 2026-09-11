@@ -102,7 +102,13 @@ function transcodeToFileVaapi(url: string, outPath: string): Promise<void> {
     '-hwaccel_output_format', 'vaapi',
     '-vaapi_device', VAAPI_DEVICE,
     '-i', url,
-    '-vf', "scale_vaapi=w='min(1920,iw)':h=-2",
+    // scale_vaapi defaults to tagging its output as full-range (yuvj420p /
+    // color_range=pc) even though the source is standard limited-range —
+    // a known ffmpeg+VAAPI mislabeling, not an actual value shift. Chrome's
+    // hardware H.264 decode path can silently refuse a stream with that
+    // combination (no error, the <video> element just never leaves
+    // readyState HAVE_NOTHING), so force limited range explicitly.
+    '-vf', "scale_vaapi=w='min(1920,iw)':h=-2:out_range=tv",
     '-c:v', 'h264_vaapi',
     // Gen12+ Intel iGPUs (Xe-LP, e.g. Raptor Lake) only expose the low-power
     // VAAPI encode entrypoint (VAEntrypointEncSliceLP) for H.264 — the

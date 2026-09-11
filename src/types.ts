@@ -207,6 +207,9 @@ export interface FlightsConfig {
   piawareUrl: string;
   homeLat: number;
   homeLon: number;
+  /** Optional — free OpenSky Network API client credentials, adds departure/arrival times */
+  openskyClientId?: string;
+  openskyClientSecret?: string;
 }
 
 export interface AircraftPosition {
@@ -246,6 +249,9 @@ export interface FlightDetail {
     originIata?: string;
     destinationName?: string;
     destinationIata?: string;
+    /** Unix ms — only present when OpenSky credentials are configured */
+    departureTime?: number;
+    arrivalTime?: number;
   };
   photo?: {
     url: string;

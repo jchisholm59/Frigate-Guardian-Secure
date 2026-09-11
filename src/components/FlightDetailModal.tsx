@@ -105,11 +105,23 @@ export const FlightDetailModal: React.FC<FlightDetailModalProps> = ({ aircraft, 
             <div>
               <span className="text-[10px] uppercase tracking-wider block text-slate-500 font-bold mb-1.5">Route</span>
               {detail?.route ? (
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="text-white font-bold">{detail.route.originIata || detail.route.originName || '?'}</span>
-                  <span className="text-slate-500">→</span>
-                  <span className="text-white font-bold">{detail.route.destinationIata || detail.route.destinationName || '?'}</span>
-                  {detail.route.airline && <span className="text-slate-400 text-xs ml-2">({detail.route.airline})</span>}
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="text-white font-bold">{detail.route.originIata || detail.route.originName || '?'}</span>
+                    <span className="text-slate-500">→</span>
+                    <span className="text-white font-bold">{detail.route.destinationIata || detail.route.destinationName || '?'}</span>
+                    {detail.route.airline && <span className="text-slate-400 text-xs ml-2">({detail.route.airline})</span>}
+                  </div>
+                  {(detail.route.departureTime || detail.route.arrivalTime) && (
+                    <div className="flex items-center gap-4 text-[11px] text-slate-400 font-mono">
+                      {detail.route.departureTime && (
+                        <span>Departed: {new Date(detail.route.departureTime).toLocaleString()}</span>
+                      )}
+                      {detail.route.arrivalTime && (
+                        <span>Last seen: {new Date(detail.route.arrivalTime).toLocaleString()}</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <span className="text-xs text-slate-500">

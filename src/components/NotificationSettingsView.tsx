@@ -80,6 +80,8 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     piawareUrl: '',
     homeLat: 0,
     homeLon: 0,
+    openskyClientId: '',
+    openskyClientSecret: '',
   },
 };
 
@@ -221,6 +223,7 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
 
   // Flight receiver connection test
   const [isTestingFlights, setIsTestingFlights] = useState(false);
+  const [showOpenskySecret, setShowOpenskySecret] = useState(false);
   const [flightsTestResult, setFlightsTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const handleTestFlights = async () => {
@@ -1417,6 +1420,52 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
                 onChange={(e) => updateFlights({ homeLon: parseFloat(e.target.value) || 0 })}
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-700 focus:outline-none focus:border-amber-500"
               />
+            </div>
+          </div>
+
+          <div className="border border-slate-800 bg-slate-900/60 rounded-xl p-4 space-y-3">
+            <div className="flex items-center gap-2 text-xs text-slate-300">
+              <Clock className="w-4 h-4 text-amber-400" />
+              <span className="uppercase tracking-wider font-black">OpenSky Network (Optional — Departure/Arrival Times)</span>
+            </div>
+            <p className="text-[10px] text-slate-500 leading-relaxed">
+              adsbdb.com and planespotters.net never carry timing data. Adding a free{' '}
+              <a href="https://opensky-network.org/" target="_blank" rel="noreferrer" className="text-amber-400 hover:text-amber-300 underline">
+                OpenSky Network
+              </a>{' '}
+              API client (registered under your account, not a login) fills in estimated departure/arrival times and
+              catches more general-aviation flights that adsbdb&apos;s airline-schedule lookup misses.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase font-bold text-slate-400">Client ID</label>
+                <input
+                  type="text"
+                  placeholder="your-api-client"
+                  value={flights.openskyClientId || ''}
+                  onChange={(e) => updateFlights({ openskyClientId: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] uppercase font-bold text-slate-400">Client Secret</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowOpenskySecret(!showOpenskySecret)}
+                    className="text-[10px] text-slate-400 hover:text-white uppercase font-bold"
+                  >
+                    {showOpenskySecret ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+                <input
+                  type={showOpenskySecret ? 'text' : 'password'}
+                  placeholder="client secret"
+                  value={flights.openskyClientSecret || ''}
+                  onChange={(e) => updateFlights({ openskyClientSecret: e.target.value })}
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
             </div>
           </div>
 

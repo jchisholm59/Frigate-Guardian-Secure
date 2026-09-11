@@ -311,7 +311,9 @@ let persistentSettings: any = {
     enabled: false,
     piawareUrl: '',
     homeLat: 0,
-    homeLon: 0
+    homeLon: 0,
+    openskyClientId: '',
+    openskyClientSecret: ''
   }
 };
 

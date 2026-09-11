@@ -64,8 +64,13 @@ function bearingDeg(lat1: number, lon1: number, lat2: number, lon2: number): num
   return (((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360;
 }
 
+const OPENSKY_TOKEN_URL =
+  'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token';
+const OPENSKY_LOOKBACK_SEC = 24 * 60 * 60; // 24h — long enough to catch the current/most-recent leg
+
 export function createFlightService(deps: FlightServiceDeps) {
   const detailCache = new Map<string, CacheEntry<any>>();
+  let openskyToken: { value: string; expiresAt: number } | null = null;
 
   async function fetchAircraftJson(url: string): Promise<any[]> {
     const controller = new AbortController();
@@ -97,6 +102,63 @@ export function createFlightService(deps: FlightServiceDeps) {
       if (!resp.ok) return null;
       const data = await resp.json();
       return data?.response?.flightroute ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function getOpenskyToken(clientId: string, clientSecret: string): Promise<string | null> {
+    if (openskyToken && Date.now() < openskyToken.expiresAt) return openskyToken.value;
+    try {
+      const resp = await fetch(OPENSKY_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'client_credentials',
+          client_id: clientId,
+          client_secret: clientSecret,
+        }),
+      });
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      if (!data.access_token) return null;
+      // Refresh a little before actual expiry to avoid racing a stale token.
+      openskyToken = { value: data.access_token, expiresAt: Date.now() + (data.expires_in - 60) * 1000 };
+      return openskyToken.value;
+    } catch {
+      return null;
+    }
+  }
+
+  async function fetchOpenskyRoute(hex: string, callsign: string, clientId: string, clientSecret: string) {
+    const token = await getOpenskyToken(clientId, clientSecret);
+    if (!token) return null;
+    try {
+      const end = Math.floor(Date.now() / 1000);
+      const begin = end - OPENSKY_LOOKBACK_SEC;
+      const resp = await fetch(
+        `https://opensky-network.org/api/flights/aircraft?icao24=${hex}&begin=${begin}&end=${end}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!resp.ok) return null;
+      const legs = (await resp.json()) as any[];
+      if (!Array.isArray(legs) || legs.length === 0) return null;
+
+      // Multiple legs can come back for the lookback window — prefer the one
+      // matching the aircraft's current callsign, otherwise the most recent.
+      const trimmedCallsign = callsign.trim();
+      const matching = trimmedCallsign
+        ? legs.filter((l) => String(l.callsign || '').trim() === trimmedCallsign)
+        : [];
+      const pool = matching.length > 0 ? matching : legs;
+      const best = pool.reduce((a, b) => (b.firstSeen > a.firstSeen ? b : a));
+
+      return {
+        originIcao: best.estDepartureAirport || undefined,
+        destinationIcao: best.estArrivalAirport || undefined,
+        departureTime: typeof best.firstSeen === 'number' ? best.firstSeen * 1000 : undefined,
+        arrivalTime: typeof best.lastSeen === 'number' ? best.lastSeen * 1000 : undefined,
+      };
     } catch {
       return null;
     }
@@ -175,10 +237,18 @@ export function createFlightService(deps: FlightServiceDeps) {
           return res.json(cached.value);
         }
 
-        const [adsbAircraft, route, photo] = await Promise.all([
+        const settings = deps.getSettings() || {};
+        const cfg = settings.flights || {};
+        const openskyClientId = cfg.openskyClientId || '';
+        const openskyClientSecret = cfg.openskyClientSecret || '';
+
+        const [adsbAircraft, route, photo, openskyRoute] = await Promise.all([
           fetchAdsbdbAircraft(hex),
           callsign ? fetchAdsbdbRoute(callsign) : Promise.resolve(null),
           fetchPlanespottersPhoto(hex),
+          openskyClientId && openskyClientSecret
+            ? fetchOpenskyRoute(hex, callsign, openskyClientId, openskyClientSecret)
+            : Promise.resolve(null),
         ]);
 
         const result = {
@@ -191,15 +261,23 @@ export function createFlightService(deps: FlightServiceDeps) {
                 manufacturer: adsbAircraft.manufacturer,
               }
             : undefined,
-          route: route
-            ? {
-                airline: route.airline?.name,
-                originName: route.origin?.name,
-                originIata: route.origin?.iata_code,
-                destinationName: route.destination?.name,
-                destinationIata: route.destination?.iata_code,
-              }
-            : undefined,
+          route:
+            route || openskyRoute
+              ? {
+                  airline: route?.airline?.name,
+                  // Prefer adsbdb's named/IATA route when it has one (mostly
+                  // scheduled airline flights); fall back to OpenSky's
+                  // ADS-B-derived ICAO airports, which cover far more general
+                  // aviation / private / military traffic.
+                  originName: route?.origin?.name || openskyRoute?.originIcao,
+                  originIata: route?.origin?.iata_code,
+                  destinationName: route?.destination?.name || openskyRoute?.destinationIcao,
+                  destinationIata: route?.destination?.iata_code,
+                  // Only OpenSky ever has actual times — adsbdb never does.
+                  departureTime: openskyRoute?.departureTime,
+                  arrivalTime: openskyRoute?.arrivalTime,
+                }
+              : undefined,
           photo:
             photo ||
             (adsbAircraft?.url_photo

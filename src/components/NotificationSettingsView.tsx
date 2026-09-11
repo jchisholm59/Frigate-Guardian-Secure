@@ -18,8 +18,13 @@ import {
   Radio,
   Clock,
   Bird,
+  Waves,
+  Plus,
+  Search,
+  MapPin,
+  X,
 } from 'lucide-react';
-import { NotificationSettings, NotificationLog, BirdNetConfig } from '../types';
+import { NotificationSettings, NotificationLog, BirdNetConfig, TidalConfig, TidalStation } from '../types';
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   gmail: {
@@ -61,8 +66,18 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     topic: 'birdnet-sightings',
     username: '',
     password: ''
-  }
+  },
+  tides: {
+    enabled: false,
+    stations: [],
+    units: 'm',
+    refreshIntervalMinutes: 15,
+    alerts: { enabled: false, channels: [], minutesBefore: 60, events: ['high', 'low'] },
+  },
 };
+
+const DEFAULT_TIDES: TidalConfig = DEFAULT_NOTIFICATION_SETTINGS.tides!;
+const MAX_TIDE_STATIONS = 4;
 
 interface NotificationSettingsViewProps {
   settings: NotificationSettings;
@@ -76,7 +91,7 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
   availableCameras = [],
 }) => {
   const [localSettings, setLocalSettings] = useState<NotificationSettings>(settings);
-  const [activeChannelTab, setActiveChannelTab] = useState<'gmail' | 'slack' | 'discord' | 'birdnet' | 'filters' | 'logs'>('gmail');
+  const [activeChannelTab, setActiveChannelTab] = useState<'gmail' | 'slack' | 'discord' | 'birdnet' | 'tides' | 'filters' | 'logs'>('gmail');
   const [showSmtpAdvanced, setShowSmtpAdvanced] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   
@@ -174,6 +189,63 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
     };
     setLocalSettings(updated);
     onUpdateSettings(updated);
+  };
+
+  const tides: TidalConfig = { ...DEFAULT_TIDES, ...(localSettings.tides || {}), alerts: { ...DEFAULT_TIDES.alerts, ...(localSettings.tides?.alerts || {}) } };
+
+  const updateTides = (partial: Partial<TidalConfig>) => {
+    const updated = { ...localSettings, tides: { ...tides, ...partial } };
+    setLocalSettings(updated);
+    onUpdateSettings(updated);
+  };
+
+  const updateTideAlerts = (partial: Partial<TidalConfig['alerts']>) => {
+    updateTides({ alerts: { ...tides.alerts, ...partial } });
+  };
+
+  // Tide station search
+  const [tideQuery, setTideQuery] = useState('');
+  const [tideResults, setTideResults] = useState<TidalStation[]>([]);
+  const [tideSearching, setTideSearching] = useState(false);
+  const [tideSearchError, setTideSearchError] = useState<string | null>(null);
+
+  const searchTideStations = async () => {
+    if (!tideQuery.trim()) return;
+    setTideSearching(true);
+    setTideSearchError(null);
+    try {
+      const resp = await fetch(`/api/tides/stations/search?q=${encodeURIComponent(tideQuery.trim())}`);
+      const data = await resp.json();
+      if (data.success) setTideResults(data.stations || []);
+      else setTideSearchError(data.error || 'Search failed');
+    } catch {
+      setTideSearchError('Network error during station search');
+    } finally {
+      setTideSearching(false);
+    }
+  };
+
+  const addTideStation = (s: TidalStation) => {
+    if (tides.stations.some((x) => x.id === s.id) || tides.stations.length >= MAX_TIDE_STATIONS) return;
+    updateTides({ stations: [...tides.stations, s] });
+    setTideResults([]);
+    setTideQuery('');
+  };
+
+  const removeTideStation = (id: string) => {
+    updateTides({ stations: tides.stations.filter((x) => x.id !== id) });
+  };
+
+  const toggleTideAlertChannel = (ch: 'gmail' | 'slack' | 'discord') => {
+    const set = new Set(tides.alerts.channels);
+    set.has(ch) ? set.delete(ch) : set.add(ch);
+    updateTideAlerts({ channels: Array.from(set) as ('gmail' | 'slack' | 'discord')[] });
+  };
+
+  const toggleTideEvent = (ev: 'high' | 'low') => {
+    const set = new Set(tides.alerts.events);
+    set.has(ev) ? set.delete(ev) : set.add(ev);
+    updateTideAlerts({ events: Array.from(set) as ('high' | 'low')[] });
   };
 
   // Send a test notification
@@ -337,6 +409,26 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
             <Bird className="w-3.5 h-3.5 text-white" />
             <span>BirdNET-Go</span>
             {localSettings.birdnet?.enabled && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            )}
+          </button>
+
+          {/* Tides Tab */}
+          <button
+            id="tab-notif-tides"
+            onClick={() => {
+              setActiveChannelTab('tides');
+              setTestResult(null);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${
+              activeChannelTab === 'tides'
+                ? 'bg-cyan-600 text-white shadow-md'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <Waves className="w-3.5 h-3.5 text-white" />
+            <span>Tides</span>
+            {localSettings.tides?.enabled && (
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
             )}
           </button>
@@ -950,6 +1042,222 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
             <p className="opacity-80 leading-relaxed">
               If your cottage uses a different MQTT broker, you can specify its unique IP and credentials here.
               The sightings will be synced to this dashboard in real-time.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- TIDES TAB -------------------- */}
+      {activeChannelTab === 'tides' && (
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-5 shadow-md">
+          {/* Header & Enable Toggle */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-cyan-950/40 border border-cyan-500/30 text-cyan-400">
+                <Waves className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black uppercase tracking-tight text-white">Tide Predictions &amp; Alerts</h4>
+                <p className="text-xs text-slate-400">
+                  Canadian Hydrographic Service (DFO) predictions for up to {MAX_TIDE_STATIONS} stations, shown on the Tides tab.
+                </p>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                id="toggle-tides-enabled"
+                type="checkbox"
+                checked={tides.enabled}
+                onChange={(e) => updateTides({ enabled: e.target.checked })}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-slate-300 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
+              <span className="ml-2.5 text-xs font-black uppercase tracking-wider text-slate-300">
+                {tides.enabled ? 'Enabled' : 'Disabled'}
+              </span>
+            </label>
+          </div>
+
+          {/* Configured stations */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+              Monitored Stations ({tides.stations.length}/{MAX_TIDE_STATIONS})
+            </label>
+            {tides.stations.length === 0 ? (
+              <p className="text-xs text-slate-600 italic">No stations added yet — search below.</p>
+            ) : (
+              <div className="space-y-2">
+                {tides.stations.map((s) => (
+                  <div key={s.id} className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <MapPin className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-black text-white truncate">{s.name}</p>
+                        <p className="text-[10px] font-mono text-slate-500">
+                          #{s.code} · {s.latitude.toFixed(3)}, {s.longitude.toFixed(3)}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeTideStation(s.id)}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-950/30 transition-colors"
+                      title="Remove station"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Station search */}
+          {tides.stations.length < MAX_TIDE_STATIONS && (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Search CHS stations (e.g. Halifax, Digby, 00490)"
+                  value={tideQuery}
+                  onChange={(e) => setTideQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && searchTideStations()}
+                  className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500"
+                />
+                <button
+                  onClick={searchTideStations}
+                  disabled={tideSearching || !tideQuery.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 text-white text-xs font-black uppercase tracking-wider transition-all"
+                >
+                  {tideSearching ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
+                  <span>Search</span>
+                </button>
+              </div>
+              {tideSearchError && <p className="text-[11px] text-red-400 font-bold">{tideSearchError}</p>}
+              {tideResults.length > 0 && (
+                <div className="max-h-56 overflow-y-auto space-y-1.5 border border-slate-800 rounded-xl p-2 bg-slate-900/50">
+                  {tideResults.map((s) => {
+                    const added = tides.stations.some((x) => x.id === s.id);
+                    return (
+                      <div key={s.id} className="flex items-center justify-between px-2.5 py-2 rounded-lg hover:bg-slate-800/60">
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white truncate">{s.name}</p>
+                          <p className="text-[10px] font-mono text-slate-500">#{s.code}</p>
+                        </div>
+                        <button
+                          onClick={() => addTideStation(s)}
+                          disabled={added}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-cyan-600 disabled:opacity-40 disabled:hover:bg-slate-800 text-white text-[10px] font-black uppercase tracking-wider transition-colors"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>{added ? 'Added' : 'Add'}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Units */}
+          <div className="flex items-center justify-between pt-2">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-300">Display Units</label>
+            <div className="flex rounded-xl overflow-hidden border border-slate-800">
+              {(['m', 'ft'] as const).map((u) => (
+                <button
+                  key={u}
+                  onClick={() => updateTides({ units: u })}
+                  className={`px-4 py-1.5 text-xs font-black uppercase tracking-wider transition-colors ${
+                    tides.units === u ? 'bg-cyan-600 text-white' : 'bg-slate-900 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {u === 'm' ? 'Metres' : 'Feet'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Tide alerts */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-black uppercase tracking-wider text-white">High / Low Tide Alerts</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={tides.alerts.enabled}
+                  onChange={(e) => updateTideAlerts({ enabled: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-slate-300 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
+              </label>
+            </div>
+
+            {tides.alerts.enabled && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <label className="text-xs font-bold text-slate-300">Notify</label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={360}
+                    step={5}
+                    value={tides.alerts.minutesBefore}
+                    onChange={(e) => updateTideAlerts({ minutesBefore: Math.max(5, Number(e.target.value) || 60) })}
+                    className="w-20 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-cyan-500"
+                  />
+                  <label className="text-xs font-bold text-slate-300">minutes before each event</label>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {(['high', 'low'] as const).map((ev) => (
+                    <button
+                      key={ev}
+                      onClick={() => toggleTideEvent(ev)}
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors ${
+                        tides.alerts.events.includes(ev)
+                          ? 'bg-cyan-600 text-white'
+                          : 'bg-slate-900 text-slate-500 border border-slate-800 hover:text-white'
+                      }`}
+                    >
+                      {ev} tide
+                    </button>
+                  ))}
+                </div>
+
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Deliver via</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(['gmail', 'slack', 'discord'] as const).map((ch) => (
+                      <button
+                        key={ch}
+                        onClick={() => toggleTideAlertChannel(ch)}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition-colors ${
+                          tides.alerts.channels.includes(ch)
+                            ? 'bg-cyan-600 text-white'
+                            : 'bg-slate-900 text-slate-500 border border-slate-800 hover:text-white'
+                        }`}
+                      >
+                        {ch}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-600 leading-relaxed pt-1">
+                    Tide alerts reuse the webhook URL / SMTP credentials from the Gmail, Slack and Discord tabs — the
+                    channel doesn&apos;t need to be &quot;enabled&quot; there, just configured.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="p-4 rounded-xl bg-cyan-900/10 border border-cyan-500/20 text-xs text-cyan-300">
+            <p className="opacity-80 leading-relaxed">
+              Data: <span className="font-mono">api-iwls.dfo-mpo.gc.ca</span> — official CHS water-level predictions.
+              Predictions are cached for 10 minutes. Sunrise/sunset and moon phase are computed locally from each
+              station&apos;s coordinates.
             </p>
           </div>
         </div>

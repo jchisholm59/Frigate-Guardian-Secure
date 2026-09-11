@@ -195,6 +195,69 @@ export interface NotificationSettings {
   discord: DiscordNotificationConfig;
   filters: NotificationFilterConfig;
   birdnet?: BirdNetConfig;
+  tides?: TidalConfig;
+}
+
+// --- Tides (DFO / Canadian Hydrographic Service) ---
+
+export interface TidalStation {
+  /** DFO IWLS station id (Mongo-style hash) */
+  id: string;
+  /** Human-facing 5-digit CHS station code, e.g. "00490" */
+  code: string;
+  /** Official station name from DFO */
+  name: string;
+  latitude: number;
+  longitude: number;
+  province?: string;
+}
+
+export interface TidalAlertConfig {
+  enabled: boolean;
+  /** Which notification channels tide alerts go out on */
+  channels: ('gmail' | 'slack' | 'discord')[];
+  /** Fire this many minutes before the predicted event */
+  minutesBefore: number;
+  /** Which events trigger an alert */
+  events: ('high' | 'low')[];
+}
+
+export interface TidalConfig {
+  enabled: boolean;
+  stations: TidalStation[];
+  units: 'm' | 'ft';
+  refreshIntervalMinutes: number;
+  alerts: TidalAlertConfig;
+}
+
+export interface TidalDataPoint {
+  /** ISO-8601 UTC timestamp */
+  eventDate: string;
+  /** Water level in metres (chart datum) */
+  value: number;
+}
+
+export interface TidalExtreme extends TidalDataPoint {
+  type: 'high' | 'low';
+}
+
+export interface SunMoonInfo {
+  sunrise: string | null;
+  sunset: string | null;
+  /** 0=new, 0.25=first quarter, 0.5=full, 0.75=last quarter */
+  moonPhase: number;
+  moonPhaseName: string;
+  /** 0..1 fraction of the moon's disc that is lit */
+  moonIllumination: number;
+}
+
+export interface TidalStationReadout {
+  success: boolean;
+  station: TidalStation;
+  predictions: TidalDataPoint[];
+  highLow: TidalExtreme[];
+  fetchedAt: number;
+  error?: string;
 }
 
 export interface BirdNetConfig {
@@ -235,7 +298,7 @@ export interface NotificationLog {
   details?: string;
 }
 
-export type ActiveTab = 'live' | 'events' | 'birds' | 'zones' | 'config' | 'system' | 'notifications';
+export type ActiveTab = 'live' | 'events' | 'birds' | 'tides' | 'zones' | 'config' | 'system' | 'notifications';
 
 export type AppTheme = 'midnight' | 'slate-grey';
 

@@ -13,6 +13,7 @@ import { GoogleGenAI } from '@google/genai';
 import mqtt, { type MqttClient } from 'mqtt';
 import nodemailer from 'nodemailer';
 import { createTideService } from './tides';
+import { createFlightService } from './flights';
 
 // Probe an event clip's video codec via ffprobe so we only pay the transcode
 // cost for H.265 clips (Firefox/Chrome cannot decode HEVC at all, regardless
@@ -305,6 +306,12 @@ let persistentSettings: any = {
     units: 'm',
     refreshIntervalMinutes: 15,
     alerts: { enabled: false, channels: [], minutesBefore: 60, events: ['high', 'low'] }
+  },
+  flights: {
+    enabled: false,
+    piawareUrl: '',
+    homeLat: 0,
+    homeLon: 0
   }
 };
 
@@ -1446,6 +1453,13 @@ Return a JSON object with:
   });
   tideService.registerRoutes(app);
   tideService.startScheduler();
+
+  // Flight service (PiAware / dump1090-fa ADS-B receiver) — no scheduler,
+  // just on-demand routes polled by the Flights tab while it's open.
+  const flightService = createFlightService({
+    getSettings: () => persistentSettings,
+  });
+  flightService.registerRoutes(app);
 
   function connectToMqtt() {
     if (!activeMqttConfig.brokerHost) return;

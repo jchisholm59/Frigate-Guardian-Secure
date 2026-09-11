@@ -23,8 +23,9 @@ import {
   Search,
   MapPin,
   X,
+  Plane,
 } from 'lucide-react';
-import { NotificationSettings, NotificationLog, BirdNetConfig, TidalConfig, TidalStation } from '../types';
+import { NotificationSettings, NotificationLog, BirdNetConfig, TidalConfig, TidalStation, FlightsConfig } from '../types';
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   gmail: {
@@ -74,10 +75,17 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
     refreshIntervalMinutes: 15,
     alerts: { enabled: false, channels: [], minutesBefore: 60, events: ['high', 'low'] },
   },
+  flights: {
+    enabled: false,
+    piawareUrl: '',
+    homeLat: 0,
+    homeLon: 0,
+  },
 };
 
 const DEFAULT_TIDES: TidalConfig = DEFAULT_NOTIFICATION_SETTINGS.tides!;
 const MAX_TIDE_STATIONS = 4;
+const DEFAULT_FLIGHTS: FlightsConfig = DEFAULT_NOTIFICATION_SETTINGS.flights!;
 
 interface NotificationSettingsViewProps {
   settings: NotificationSettings;
@@ -91,7 +99,7 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
   availableCameras = [],
 }) => {
   const [localSettings, setLocalSettings] = useState<NotificationSettings>(settings);
-  const [activeChannelTab, setActiveChannelTab] = useState<'gmail' | 'slack' | 'discord' | 'birdnet' | 'tides' | 'filters' | 'logs'>('gmail');
+  const [activeChannelTab, setActiveChannelTab] = useState<'gmail' | 'slack' | 'discord' | 'birdnet' | 'tides' | 'flights' | 'filters' | 'logs'>('gmail');
   const [showSmtpAdvanced, setShowSmtpAdvanced] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   
@@ -201,6 +209,41 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
 
   const updateTideAlerts = (partial: Partial<TidalConfig['alerts']>) => {
     updateTides({ alerts: { ...tides.alerts, ...partial } });
+  };
+
+  const flights: FlightsConfig = { ...DEFAULT_FLIGHTS, ...(localSettings.flights || {}) };
+
+  const updateFlights = (partial: Partial<FlightsConfig>) => {
+    const updated = { ...localSettings, flights: { ...flights, ...partial } };
+    setLocalSettings(updated);
+    onUpdateSettings(updated);
+  };
+
+  // Flight receiver connection test
+  const [isTestingFlights, setIsTestingFlights] = useState(false);
+  const [flightsTestResult, setFlightsTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTestFlights = async () => {
+    if (!flights.piawareUrl.trim()) return;
+    setIsTestingFlights(true);
+    setFlightsTestResult(null);
+    try {
+      const resp = await fetch('/api/flights/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ piawareUrl: flights.piawareUrl.trim() }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        setFlightsTestResult({ success: true, message: `Connected — ${data.aircraftCount} aircraft currently reporting.` });
+      } else {
+        setFlightsTestResult({ success: false, message: data.error || 'Could not reach that URL.' });
+      }
+    } catch {
+      setFlightsTestResult({ success: false, message: 'Network error reaching the server.' });
+    } finally {
+      setIsTestingFlights(false);
+    }
   };
 
   // Tide station search
@@ -443,6 +486,26 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
             <Waves className="w-3.5 h-3.5 text-white" />
             <span>Tides</span>
             {localSettings.tides?.enabled && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            )}
+          </button>
+
+          {/* Flights Tab */}
+          <button
+            id="tab-notif-flights"
+            onClick={() => {
+              setActiveChannelTab('flights');
+              setTestResult(null);
+            }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs uppercase font-black tracking-wider transition-all ${
+              activeChannelTab === 'flights'
+                ? 'bg-amber-600 text-white shadow-md'
+                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+            }`}
+          >
+            <Plane className="w-3.5 h-3.5 text-white" />
+            <span>Flights</span>
+            {localSettings.flights?.enabled && (
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
             )}
           </button>
@@ -1273,6 +1336,104 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
               Predictions are cached for 10 minutes. Sunrise/sunset and moon phase are computed locally from each
               station&apos;s coordinates.
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- FLIGHTS TAB -------------------- */}
+      {activeChannelTab === 'flights' && (
+        <div className="bg-slate-950 border border-slate-800 rounded-2xl p-5 space-y-5 shadow-md">
+          {/* Header & Enable Toggle */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-400">
+                <Plane className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-black uppercase tracking-tight text-white">Live Air Traffic (ADS-B)</h4>
+                <p className="text-xs text-slate-400">
+                  Connect a local PiAware / dump1090-fa receiver to show live aircraft on a map centered on your home.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  id="toggle-flights-enabled"
+                  type="checkbox"
+                  checked={flights.enabled}
+                  onChange={(e) => updateFlights({ enabled: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                <span className="ml-2.5 text-xs font-black uppercase tracking-wider text-slate-300">
+                  {flights.enabled ? 'Enabled' : 'Disabled'}
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">PiAware Data URL</label>
+            <input
+              type="text"
+              placeholder="http://192.168.1.xxx/skyaware/data/aircraft.json"
+              value={flights.piawareUrl}
+              onChange={(e) => updateFlights({ piawareUrl: e.target.value })}
+              className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-700 focus:outline-none focus:border-amber-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Home Latitude</label>
+              <input
+                type="number"
+                step="0.00001"
+                placeholder="44.65369"
+                value={flights.homeLat || ''}
+                onChange={(e) => updateFlights({ homeLat: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-700 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Home Longitude</label>
+              <input
+                type="number"
+                step="0.00001"
+                placeholder="-63.81416"
+                value={flights.homeLon || ''}
+                onChange={(e) => updateFlights({ homeLon: parseFloat(e.target.value) || 0 })}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-white placeholder-slate-700 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          {flightsTestResult && (
+            <div
+              className={`p-3 rounded-xl border text-xs ${
+                flightsTestResult.success
+                  ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                  : 'bg-red-950/40 border-red-500/40 text-red-300'
+              }`}
+            >
+              {flightsTestResult.message}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-xs text-slate-500 font-mono">
+              Origin/destination and aircraft photos come from free community APIs (adsbdb.com, planespotters.net).
+            </span>
+            <button
+              onClick={handleTestFlights}
+              disabled={isTestingFlights || !flights.piawareUrl.trim()}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs uppercase font-black tracking-wider bg-amber-600 hover:bg-amber-500 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shadow-md active:scale-95"
+            >
+              {isTestingFlights ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Radio className="w-3.5 h-3.5" />}
+              <span>{isTestingFlights ? 'Testing...' : 'Test Connection'}</span>
+            </button>
           </div>
         </div>
       )}

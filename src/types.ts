@@ -196,6 +196,63 @@ export interface NotificationSettings {
   filters: NotificationFilterConfig;
   birdnet?: BirdNetConfig;
   tides?: TidalConfig;
+  flights?: FlightsConfig;
+}
+
+// --- Flights (PiAware / dump1090-fa ADS-B receiver) ---
+
+export interface FlightsConfig {
+  enabled: boolean;
+  /** Full URL to the receiver's aircraft.json, e.g. http://192.168.1.x/skyaware/data/aircraft.json */
+  piawareUrl: string;
+  homeLat: number;
+  homeLon: number;
+}
+
+export interface AircraftPosition {
+  hex: string;
+  /** Trimmed callsign, or null if the aircraft hasn't broadcast one yet */
+  flight: string | null;
+  lat: number;
+  lon: number;
+  /** Feet, or null if unknown */
+  altitude: number | null;
+  onGround: boolean;
+  /** Knots, or null if unknown */
+  groundSpeed: number | null;
+  /** Heading in degrees, or null if unknown */
+  track: number | null;
+  squawk: string | null;
+  distanceNm: number;
+  /** Bearing in degrees from home to the aircraft */
+  bearing: number;
+  /** Seconds since the last message from this aircraft */
+  seenSec: number;
+  /** Seconds since the last position update */
+  seenPosSec: number;
+}
+
+export interface FlightDetail {
+  success: boolean;
+  aircraft?: {
+    registration?: string;
+    type?: string;
+    icaoType?: string;
+    manufacturer?: string;
+  };
+  route?: {
+    airline?: string;
+    originName?: string;
+    originIata?: string;
+    destinationName?: string;
+    destinationIata?: string;
+  };
+  photo?: {
+    url: string;
+    photographer?: string;
+    link?: string;
+  };
+  error?: string;
 }
 
 // --- Tides (DFO / Canadian Hydrographic Service) ---
@@ -298,7 +355,7 @@ export interface NotificationLog {
   details?: string;
 }
 
-export type ActiveTab = 'live' | 'events' | 'birds' | 'tides' | 'zones' | 'config' | 'system' | 'notifications';
+export type ActiveTab = 'live' | 'events' | 'birds' | 'tides' | 'flights' | 'zones' | 'config' | 'system' | 'notifications';
 
 export type AppTheme = 'midnight' | 'slate-grey';
 

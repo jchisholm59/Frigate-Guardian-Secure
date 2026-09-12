@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Plus, Trash2, Save, HelpCircle, Target } from 'lucide-react';
+import { X, Plus, Trash2, Save, HelpCircle, Target, Loader2 } from 'lucide-react';
 import { ExclusionZone } from '../types';
 
 type DragInfo =
@@ -30,6 +30,15 @@ export const ExclusionZoneModal: React.FC<ExclusionZoneModalProps> = ({
   const [activeZoneIndex, setActiveZoneIndex] = useState(0);
   const [saveToast, setSaveToast] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  // The reference-frame <img> failing silently rendered as a plain black
+  // box (the container's own background) with no indication anything was
+  // wrong — easy to mistake for "camera has no light right now" instead of
+  // an actual failed fetch. Track load state explicitly so a failure shows
+  // as a failure, with a way to retry. cacheBust forces an actual re-fetch
+  // on retry — browsers otherwise happily keep re-showing the same failed
+  // (or just stale) cached response for an unchanged URL.
+  const [imageStatus, setImageStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
+  const [cacheBust, setCacheBust] = useState(0);
   // Set true by the drag's own mousemove the instant real movement happens,
   // and consumed (reset) by the very next click handler — that's what stops
   // the click-to-add-vertex handler from also firing off the click event a
@@ -46,6 +55,8 @@ export const ExclusionZoneModal: React.FC<ExclusionZoneModalProps> = ({
       setCameraId(target);
       setZones(exclusionZones[target] || []);
       setActiveZoneIndex(0);
+      setImageStatus('loading');
+      setCacheBust((n) => n + 1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, initialCameraId]);
@@ -54,6 +65,8 @@ export const ExclusionZoneModal: React.FC<ExclusionZoneModalProps> = ({
     setCameraId(id);
     setZones(exclusionZones[id] || []);
     setActiveZoneIndex(0);
+    setImageStatus('loading');
+    setCacheBust((n) => n + 1);
   };
 
   // Normalizes a mouse position against the reference-frame container,
@@ -229,14 +242,48 @@ export const ExclusionZoneModal: React.FC<ExclusionZoneModalProps> = ({
               <div ref={containerRef} className="relative rounded-2xl overflow-hidden bg-black border border-slate-800 aspect-video">
                 {camera?.liveImageUrl ? (
                   <img
-                    src={camera.liveImageUrl}
+                    key={cacheBust}
+                    src={`${camera.liveImageUrl}${camera.liveImageUrl.includes('?') ? '&' : '?'}_cb=${cacheBust}`}
                     alt={`${camera.name} reference frame`}
                     className="absolute inset-0 w-full h-full object-contain select-none pointer-events-none"
                     draggable={false}
+                    onLoad={() => setImageStatus('loaded')}
+                    onError={() => setImageStatus('error')}
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-slate-600 text-xs uppercase tracking-wider font-bold">
                     No reference frame available for this camera
+                  </div>
+                )}
+
+                {/* Proxying through WatchTower to the actual camera server
+                    (real network hop, not instant) means this can take a
+                    noticeable moment — without this, that gap looked
+                    identical to the reference frame just being broken. */}
+                {camera?.liveImageUrl && imageStatus === 'loading' && (
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 text-slate-500">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <span className="text-[10px] uppercase tracking-wider font-bold">Loading reference frame…</span>
+                  </div>
+                )}
+
+                {camera?.liveImageUrl && imageStatus === 'error' && (
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-slate-950/90 text-center px-6">
+                    <span className="text-rose-400 text-xs uppercase tracking-wider font-bold">
+                      Reference frame failed to load
+                    </span>
+                    <p className="text-slate-500 text-[11px] max-w-xs">
+                      Frigate may be unreachable, or this camera's latest snapshot isn't available right now.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setImageStatus('loading');
+                        setCacheBust((n) => n + 1);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 text-[10px] uppercase tracking-wider font-bold transition-colors"
+                    >
+                      Retry
+                    </button>
                   </div>
                 )}
 
@@ -304,14 +351,27 @@ export const ExclusionZoneModal: React.FC<ExclusionZoneModalProps> = ({
                   Editing: <strong className="text-white font-black">{activeZone?.name || 'No zone selected'}</strong>{' '}
                   {activeZone && <span className="text-slate-500">({activeZone.points.length} vertices)</span>}
                 </span>
-                {activeZone && (
-                  <button
-                    onClick={handleClearVertices}
-                    className="text-slate-400 hover:text-white uppercase tracking-wider text-[10px] font-bold transition-colors"
-                  >
-                    Clear Vertices
-                  </button>
-                )}
+                <div className="flex items-center gap-3">
+                  {camera?.liveImageUrl && (
+                    <button
+                      onClick={() => {
+                        setImageStatus('loading');
+                        setCacheBust((n) => n + 1);
+                      }}
+                      className="text-slate-400 hover:text-white uppercase tracking-wider text-[10px] font-bold transition-colors"
+                    >
+                      Refresh Frame
+                    </button>
+                  )}
+                  {activeZone && (
+                    <button
+                      onClick={handleClearVertices}
+                      className="text-slate-400 hover:text-white uppercase tracking-wider text-[10px] font-bold transition-colors"
+                    >
+                      Clear Vertices
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 

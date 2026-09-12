@@ -4,6 +4,39 @@ Backup points created before risky deploys to the live NUC (`192.168.2.210:8100`
 
 ---
 
+## 2026-09-12 — Fix Frigate box coordinate order/resolution (driveway spam) + persist BirdNET daily-alert dedup
+
+Before deploying (commit `b860e07`), a backup point was made of the last-known-good build (commit `8dabf18` — zone auto-create fix, running live and stable at the time).
+
+**Git tag:** [`pre-box-geometry-fix-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-box-geometry-fix-2026-09-12) at commit `8dabf18`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-box-geometry-fix-20260912-174849/`
+
+User reported still getting truck/driveway emails despite drawing exclusion zones there, escalating to "a car in driveway alert about every ten seconds." Root cause, confirmed by capturing a real live `frigate/events` MQTT payload for the driveway camera and cross-checking it against Frigate's own normalized `path_data` on the same event: Frigate's `box` field is `[x_min, y_min, x_max, y_max]` in the camera's **detect** resolution (driveway is 1280x720), not `[y_min, x_min, y_max, x_max]` and not the 1920x1080 we'd hardcoded. Both bugs together put every computed detection centroid in roughly the wrong quadrant of the frame, so it never landed inside a drawn zone — the truck kept re-triggering "new" Frigate events (it's a live tracker, not a single static detection) and every one of them dispatched. Fixed the coordinate order and added a per-camera detect-resolution lookup (`getCameraDetectResolution`, cached, sourced from Frigate's `/api/config`) in both the live MQTT dispatch path and the historical `/api/frigate/servers/fetch-events` path, replacing the hardcoded 1920x1080 divisor.
+
+Same trip also fixed a second, unrelated bug the user flagged: BirdNET's "first sighting today" alert dedup (`dailyAlertedSpecies`) was in-memory only, so it silently reset on every `pm2 restart` — including every one of this session's earlier deploys — letting already-alerted species (Blue Jay, American Crow, Black-capped Chickadee, Common Raven) re-fire as "first detection today" repeatedly, confirmed via `pm2 logs` showing the same species logged as "First detection today" dozens of times in one calendar day with zero "Daily alert tracking reset" lines in between. Now persisted to `~/.frigate-guardian/bird_alert_state.json`, keyed by local (server timezone, `America/Halifax`) date so restarts and even a mid-evening UTC-day rollover no longer cause a repeat. Note: because the in-memory set from before this deploy is gone, any species already alerted earlier today may alert once more this session before the persisted file takes over — expected, one-time only.
+
+Verified live: watched `pm2 logs` after restart and confirmed real driveway MQTT events (`1789246178.131952-3d99my`) now log `[MQTT Alert] Notification skipped: Filtered out: inside exclusion zone "Tundra"` instead of dispatching.
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-box-geometry-fix-20260912-174849 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-box-geometry-fix-2026-09-12 -- server.ts && npm run build && pm2 restart watchtower"
+```
+
+After either, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## 2026-09-12 — Exclusion zone "click does nothing on a fresh camera" fix
 
 Before deploying (commit `8dabf18`), a backup point was made of the last-known-good build (commit `a74bef9` — reference-frame loading states, running live and stable at the time).

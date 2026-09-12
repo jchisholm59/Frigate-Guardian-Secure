@@ -4,6 +4,35 @@ Backup points created before risky deploys to the live NUC (`192.168.2.210:8100`
 
 ---
 
+## 2026-09-12 — Exclusion zone "click does nothing on a fresh camera" fix
+
+Before deploying (commit `8dabf18`), a backup point was made of the last-known-good build (commit `a74bef9` — reference-frame loading states, running live and stable at the time).
+
+**Git tag:** [`pre-zone-autocreate-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-zone-autocreate-2026-09-12) at commit `a74bef9`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-zone-autocreate-20260912-171048/`
+
+Fixes "left clicking does nothing" — `handleCanvasClick` bailed out with no active zone, which is exactly the state a camera with zero zones starts in; the only way to make clicking work was to already know to hit "+ Add" first. Clicking empty canvas now creates a zone on the fly (using that click as its first point) if none is active. Verified live: reproduced the exact "no zone selected, 0 excluded areas" state on a real camera, confirmed the first click now seeds a new zone, and confirmed subsequent clicks add further vertices normally.
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-zone-autocreate-20260912-171048 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-zone-autocreate-2026-09-12 -- src/components/ExclusionZoneModal.tsx && npm run build && pm2 restart watchtower"
+```
+
+After either, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## 2026-09-12 — Exclusion zone reference-frame loading/error states
 
 Before deploying (commit `a74bef9`), a backup point was made of the last-known-good build (commit `e8fc78c` — zone dragging, running live and stable at the time).

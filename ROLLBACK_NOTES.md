@@ -4,6 +4,35 @@ Backup points created before risky deploys to the live NUC (`192.168.2.210:8100`
 
 ---
 
+## 2026-09-12 — Exclusion zones feature
+
+Before deploying (commit `13ef340`), a backup point was made of the last-known-good build (commit `79f290b` — BirdNET clip-link fix, running live and stable at the time).
+
+**Git tag:** [`pre-exclusion-zones-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-exclusion-zones-2026-09-12) at commit `79f290b`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-exclusion-zones-20260912-163837/`
+
+Adds notification-layer exclusion zones (Alert Rules → Exclusion Zones): draw a polygon per camera, any detection centered inside it is silently skipped before dispatch — independent of Frigate's own `stationary` heuristic, which is exactly what's unreliable for parked cars under changing light/shadow. Also repurposes the Snapshot/Playback "Box ON/OFF" toggle to show these zones instead of the old per-event box. Verified end-to-end against real data: drew a zone over real deck furniture using the camera's live frame, confirmed the ray-casting filter against the real saved polygon, and confirmed the overlay renders correctly on both a real snapshot and a real playing video clip with the toggle working both directions.
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-exclusion-zones-20260912-163837 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-exclusion-zones-2026-09-12 -- server.ts src/App.tsx src/components/EventsReview.tsx src/components/NotificationSettingsView.tsx src/components/SnapshotViewerModal.tsx src/components/TenSecondPlaybackModal.tsx src/types.ts && git rm -f src/components/ExclusionZoneModal.tsx && npm run build && pm2 restart watchtower"
+```
+
+After either, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## 2026-09-12 — BirdNET alert clip link fix
 
 Before deploying (commit `79f290b`), a backup point was made of the last-known-good build (commit `ab6dd95` — all-cameras-muted fix, running live and stable at the time).

@@ -49,7 +49,7 @@ export const FlightMap: React.FC<FlightMapProps> = ({ aircraft, homeLat, homeLon
   const onSelectRef = useRef(onSelectAircraft);
   onSelectRef.current = onSelectAircraft;
 
-  const [activeLayer, setActiveLayer] = useState<LayerKey>('osm');
+  const [activeLayer, setActiveLayer] = useState<LayerKey>('satellite');
   const [isZoomedIn, setIsZoomedIn] = useState(false);
 
   // Init map once

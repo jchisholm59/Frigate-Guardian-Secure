@@ -4,6 +4,35 @@ Backup points created before risky deploys to the live NUC (`192.168.2.210:8100`
 
 ---
 
+## 2026-09-12 — BirdNET alert clip link fix
+
+Before deploying (commit `79f290b`), a backup point was made of the last-known-good build (commit `ab6dd95` — all-cameras-muted fix, running live and stable at the time).
+
+**Git tag:** [`pre-birdnet-cliplink-fix-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-birdnet-cliplink-fix-2026-09-12) at commit `ab6dd95`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-birdnet-cliplink-fix-20260912-125812/`
+
+Fixes BirdNET alert emails/Slack/Discord messages linking to `<frigateServerUrl>/api/events/<birdDetectionId>/clip.mp4` — a URL that can never exist, since a BirdNET-Go detection ID is never a real Frigate event ID. Bird alerts now link straight to BirdNET-Go's own `/api/v2/audio/<id>` endpoint (mirroring how camera alerts already link straight to Frigate rather than through WatchTower). Verified directly against the live BirdNET-Go instance: HTTP 200, `Content-Type: audio/wav`, `Content-Disposition: inline` — plays immediately, no login required.
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-birdnet-cliplink-fix-20260912-125812 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-birdnet-cliplink-fix-2026-09-12 -- server.ts && npm run build && pm2 restart watchtower"
+```
+
+After either, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## 2026-09-12 — All-cameras-muted fix
 
 Before deploying (commit `ab6dd95`), a backup point was made of the last-known-good build (commit `44d081c` — Add Frigate Server form defaults fix, running live and stable at the time).

@@ -1136,6 +1136,56 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
                   />
                 </button>
               </div>
+
+              {localSettings.birdnet?.sendDailyAlerts && (
+                <div className="pt-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                    Alert Channels (defaults to every channel enabled below)
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      [
+                        { key: 'gmail', label: 'Gmail', icon: Mail, activeClass: 'bg-red-600 text-white' },
+                        { key: 'slack', label: 'Slack', icon: MessageSquare, activeClass: 'bg-[#4A154B] text-white' },
+                        { key: 'discord', label: 'Discord', icon: Bell, activeClass: 'bg-[#5865F2] text-white' },
+                      ] as const
+                    ).map(({ key, label, icon: ChannelIcon, activeClass }) => {
+                      const configured = Boolean(localSettings[key]?.enabled);
+                      const selected =
+                        !localSettings.birdnet?.alertChannels ||
+                        localSettings.birdnet.alertChannels.length === 0 ||
+                        localSettings.birdnet.alertChannels.includes(key);
+                      const baseline: ('gmail' | 'slack' | 'discord')[] =
+                        localSettings.birdnet?.alertChannels && localSettings.birdnet.alertChannels.length > 0
+                          ? localSettings.birdnet.alertChannels
+                          : ['gmail', 'slack', 'discord'];
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          disabled={!configured}
+                          onClick={() =>
+                            updateBirdnet({
+                              alertChannels: selected ? baseline.filter((c) => c !== key) : [...baseline, key],
+                            })
+                          }
+                          title={configured ? undefined : `${label} isn't enabled below, so this has no effect`}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-wider border transition-all ${
+                            !configured
+                              ? 'bg-slate-900 text-slate-600 border-slate-800 cursor-not-allowed opacity-50'
+                              : selected
+                              ? `${activeClass} border-transparent shadow-sm`
+                              : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-white'
+                          }`}
+                        >
+                          <ChannelIcon className="w-3 h-3" />
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="space-y-1.5">
               <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">MQTT Username (Optional)</label>

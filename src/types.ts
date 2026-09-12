@@ -377,6 +377,9 @@ export interface BirdNetConfig {
   username?: string;
   password?: string;
   sendDailyAlerts?: boolean;
+  /** Which channels get the daily-first-detection alert. Unset/empty means
+   *  "whatever's globally enabled" (matches pre-existing behavior). */
+  alertChannels?: ('gmail' | 'slack' | 'discord')[];
 }
 
 export interface BirdSighting {

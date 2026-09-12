@@ -906,12 +906,20 @@ async function startServer() {
             if (!dailyAlertedSpecies.has(commonName) && sighting.confidence > 0.6 && persistentSettings.birdnet?.sendDailyAlerts) {
               dailyAlertedSpecies.add(commonName);
 
-              const isGmail = persistentSettings.gmail?.enabled;
-              const isSlack = persistentSettings.slack?.enabled;
-              const isDiscord = persistentSettings.discord?.enabled;
+              // A configured alertChannels list narrows delivery to just
+              // those channels (still requires the channel itself to be
+              // globally enabled/configured) — unset/empty falls back to
+              // "every globally enabled channel", the original behavior.
+              const selectedChannels: string[] | undefined = persistentSettings.birdnet?.alertChannels;
+              const channelAllowed = (channel: 'gmail' | 'slack' | 'discord') =>
+                !selectedChannels || selectedChannels.length === 0 || selectedChannels.includes(channel);
+
+              const isGmail = persistentSettings.gmail?.enabled && channelAllowed('gmail');
+              const isSlack = persistentSettings.slack?.enabled && channelAllowed('slack');
+              const isDiscord = persistentSettings.discord?.enabled && channelAllowed('discord');
 
               if (isGmail || isSlack || isDiscord) {
-                console.log(`[Bird AI] First detection today for ${commonName}. Dispatching alerts...`);
+                console.log(`[Bird AI] First detection today for ${commonName}. Dispatching alerts to: ${[isGmail && 'gmail', isSlack && 'slack', isDiscord && 'discord'].filter(Boolean).join(', ')}`);
 
                 // Construct a "Bird Event" for the notification engine
                 const birdEvent = {
@@ -932,7 +940,18 @@ async function startServer() {
                   clipUrl: sighting.audioUrl,
                 };
 
-                dispatchNotification(birdEvent, persistentSettings).catch(err => {
+                // dispatchNotification checks each channel's own global
+                // .enabled flag — override those here (without touching the
+                // real persistentSettings object) so this one alert only
+                // goes to the channels selected above.
+                const dispatchSettings = {
+                  ...persistentSettings,
+                  gmail: { ...persistentSettings.gmail, enabled: isGmail },
+                  slack: { ...persistentSettings.slack, enabled: isSlack },
+                  discord: { ...persistentSettings.discord, enabled: isDiscord },
+                };
+
+                dispatchNotification(birdEvent, dispatchSettings).catch(err => {
                   console.error(`[Bird Alert] Failed to dispatch: ${err.message}`);
                 });
               }
@@ -2506,10 +2525,18 @@ Return a JSON object with:
     const threatUpper = (event.threatLevel || 'medium').toUpperCase();
     const color = event.threatLevel === 'high' ? 0xe74c3c : (event.threatLevel === 'medium' ? 0xe67e22 : 0x2ecc71);
 
-    // Construct URLs
+    // Construct URLs. A non-Frigate event (e.g. BirdNET) already carries its
+    // own real image URL — prefer that over guessing a Frigate event path
+    // that won't exist for a non-Frigate detection ID.
     const frigateUrl = (activeMqttConfig.frigateServerUrl || '').replace(/\/$/, '');
     const clipUrl = frigateUrl && event.id ? `${frigateUrl}/api/events/${event.id}/clip.mp4` : null;
-    const snapshotUrl = frigateUrl && event.id && !event.id.startsWith('test-') ? `${frigateUrl}/api/events/${event.id}/snapshot.jpg?bbox=1` : null;
+    const externalSnapshotUrl = typeof event.snapshotUrl === 'string' && event.snapshotUrl.startsWith('http')
+      ? event.snapshotUrl
+      : null;
+    const snapshotUrl = externalSnapshotUrl
+      || (frigateUrl && event.id && !String(event.id).startsWith('test-')
+        ? `${frigateUrl}/api/events/${event.id}/snapshot.jpg?bbox=1`
+        : null);
 
     let snapshotBuffer: Buffer | null = null;
     if (snapshotUrl) {
@@ -2629,8 +2656,19 @@ Return a JSON object with:
     const frigateUrl = (activeMqttConfig.frigateServerUrl || '').replace(/\/$/, '');
     const clipUrl = frigateUrl && event.id ? `${frigateUrl}/api/events/${event.id}/clip.mp4` : null;
 
-    if (frigateUrl && event.id && !event.id.startsWith('test-')) {
-      const snapshotUrl = `${frigateUrl}/api/events/${event.id}/snapshot.jpg?bbox=1`;
+    // A non-Frigate event (e.g. BirdNET) already carries its own real image
+    // URL — reconstructing one from event.id would hit Frigate's API with an
+    // ID it's never heard of. String(event.id) guards against BirdNET-Go's
+    // numeric detection IDs, which have no .startsWith method.
+    const externalSnapshotUrl = typeof event.snapshotUrl === 'string' && event.snapshotUrl.startsWith('http')
+      ? event.snapshotUrl
+      : null;
+    const snapshotUrl = externalSnapshotUrl
+      || (frigateUrl && event.id && !String(event.id).startsWith('test-')
+        ? `${frigateUrl}/api/events/${event.id}/snapshot.jpg?bbox=1`
+        : null);
+
+    if (snapshotUrl) {
       try {
         console.log(`[Gmail] Fetching snapshot for attachment: ${snapshotUrl}`);
         const resp = await fetch(snapshotUrl);
@@ -2793,7 +2831,7 @@ Return a JSON object with:
 
     // 3. Stale Event Filter: Skip events started more than 2 minutes ago
     const eventStart = event.startTime || now;
-    if (now - eventStart > 120000 && !event.id.startsWith('test-')) {
+    if (now - eventStart > 120000 && !String(event.id).startsWith('test-')) {
       return { success: true, skipped: true, reason: 'Event is too old (stale)' };
     }
 

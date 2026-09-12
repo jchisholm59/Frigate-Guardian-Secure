@@ -75,12 +75,23 @@ export const HostConnectorModal: React.FC<HostConnectorModalProps> = ({
   }, [isOpen, initialTab]);
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [name, setName] = useState('');
-  const [url, setUrl] = useState('http://localhost:5000');
+  // Starts empty (the format hint lives in the placeholder below) — a
+  // real pre-filled value here reads as normal typed text, so clicking in
+  // and typing without first selecting-all inserts into it instead of
+  // replacing it, producing a garbled concatenated URL that can never
+  // connect (e.g. "http://localhost:500http://<real-ip>:5000").
+  const [url, setUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
 
   // MQTT form state
   const [mqttEnabled, setMqttEnabled] = useState(true);
-  const [mqttHost, setMqttHost] = useState('localhost');
+  // Empty, not 'localhost' — same reasoning as the server URL field above:
+  // a real value here looks like normal typed text (invites the same
+  // concatenation bug) and, since it's almost never actually correct for a
+  // new server, silently getting left at 'localhost' is its own footgun.
+  // Bonus: this also un-breaks the `!mqttHost` auto-fill-from-probe check
+  // below, which could never fire while this defaulted to a truthy value.
+  const [mqttHost, setMqttHost] = useState('');
   const [mqttPort, setMqttPort] = useState(1883);
   const [mqttProtocol, setMqttProtocol] = useState<'mqtt' | 'mqtts' | 'ws' | 'wss'>('mqtt');
   const [mqttTopic, setMqttTopic] = useState('frigate');

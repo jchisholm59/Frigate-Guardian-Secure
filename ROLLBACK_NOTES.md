@@ -149,6 +149,33 @@ curl -s http://192.168.2.210:8100/api/birds/status
 
 ---
 
+## 2026-09-12 — Flights map default to Satellite
+
+Trivial one-line change (commit `7014670`) — before deploying, a backup point was made of the last-known-good build (commit `a96a683` — RBAC multi-user accounts, running live and stable at the time).
+
+**Git tag:** [`pre-satellite-default-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-satellite-default-2026-09-12) at commit `a96a683`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-satellite-default-20260912-092030/`
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-satellite-default-20260912-092030 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-satellite-default-2026-09-12 -- src/components/FlightMap.tsx && npm run build && pm2 restart watchtower"
+```
+
+After either, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## General pattern for future backup points
 
 Before deploying a change you might want to undo:

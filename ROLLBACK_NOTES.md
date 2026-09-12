@@ -4,6 +4,35 @@ Backup points created before risky deploys to the live NUC (`192.168.2.210:8100`
 
 ---
 
+## 2026-09-12 — Exclusion zone reference-frame loading/error states
+
+Before deploying (commit `a74bef9`), a backup point was made of the last-known-good build (commit `e8fc78c` — zone dragging, running live and stable at the time).
+
+**Git tag:** [`pre-zone-loading-state-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-zone-loading-state-2026-09-12) at commit `e8fc78c`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-zone-loading-state-20260912-170400/`
+
+Fixes "the drawing area is currently black" in the exclusion zone editor — the reference-frame image had no loading/error feedback, so the real (but brief) network round-trip through WatchTower to the camera server looked identical to a broken fetch. Added a loading spinner, a distinct error+Retry state, a manual "Refresh Frame" button, and cache-busting on every load. Traced live end-to-end before concluding it was a timing issue, not a broken proxy — raw Frigate snapshot, WatchTower's proxied response, and the browser's loaded `<img>` were all confirmed correct; only the missing loading indicator was the actual bug. Verified the fix by catching the spinner mid-fetch via Refresh Frame and confirming it resolves cleanly.
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-zone-loading-state-20260912-170400 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-zone-loading-state-2026-09-12 -- src/components/ExclusionZoneModal.tsx && npm run build && pm2 restart watchtower"
+```
+
+After either, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## 2026-09-12 — Exclusion zone drag-to-move/reshape
 
 Before deploying (commit `e8fc78c`), a backup point was made of the last-known-good build (commit `13ef340` — exclusion zones feature, running live and stable at the time).

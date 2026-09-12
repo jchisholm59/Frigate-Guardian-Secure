@@ -1,6 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, Plus, Trash2, Save, HelpCircle, Target } from 'lucide-react';
 import { ExclusionZone } from '../types';
+
+type DragInfo =
+  | { type: 'vertex'; zoneIndex: number; pointIndex: number }
+  | { type: 'shape'; zoneIndex: number; startX: number; startY: number; originalPoints: [number, number][] };
 
 interface ExclusionZoneModalProps {
   isOpen: boolean;
@@ -25,6 +29,14 @@ export const ExclusionZoneModal: React.FC<ExclusionZoneModalProps> = ({
   const [zones, setZones] = useState<ExclusionZone[]>(exclusionZones[cameraId] || []);
   const [activeZoneIndex, setActiveZoneIndex] = useState(0);
   const [saveToast, setSaveToast] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  // Set true by the drag's own mousemove the instant real movement happens,
+  // and consumed (reset) by the very next click handler — that's what stops
+  // the click-to-add-vertex handler from also firing off the click event a
+  // drag's mouseup naturally triggers, which would otherwise drop a stray
+  // extra vertex at the end of every drag.
+  const didDragRef = useRef(false);
+  const [dragInfo, setDragInfo] = useState<DragInfo | null>(null);
 
   // Reset local editing state whenever the modal opens or the target
   // camera changes — otherwise stale edits from a previous camera bleed in.
@@ -44,22 +56,88 @@ export const ExclusionZoneModal: React.FC<ExclusionZoneModalProps> = ({
     setActiveZoneIndex(0);
   };
 
+  // Normalizes a mouse position against the reference-frame container,
+  // regardless of which element the event actually originated on — needed
+  // because drag tracking listens on `window`, not the container itself.
+  const getNormalizedPoint = (clientX: number, clientY: number): [number, number] | null => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    const x = Number(Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)).toFixed(3));
+    const y = Number(Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)).toFixed(3));
+    return [x, y];
+  };
+
+  // Live-updates the dragged vertex or the whole shape's points while the
+  // mouse moves, tracked on `window` (not the element) so the drag keeps
+  // working even if the cursor briefly leaves the canvas mid-drag.
+  useEffect(() => {
+    if (!dragInfo) return;
+    const handleMove = (e: MouseEvent) => {
+      const pt = getNormalizedPoint(e.clientX, e.clientY);
+      if (!pt) return;
+      didDragRef.current = true;
+      const [nx, ny] = pt;
+      setZones((prev) => {
+        const zone = prev[dragInfo.zoneIndex];
+        if (!zone) return prev;
+        const updated = [...prev];
+        if (dragInfo.type === 'vertex') {
+          const newPoints = [...zone.points];
+          newPoints[dragInfo.pointIndex] = [nx, ny];
+          updated[dragInfo.zoneIndex] = { ...zone, points: newPoints };
+        } else {
+          const deltaX = nx - dragInfo.startX;
+          const deltaY = ny - dragInfo.startY;
+          const newPoints = dragInfo.originalPoints.map(
+            ([x, y]) => [Math.max(0, Math.min(1, x + deltaX)), Math.max(0, Math.min(1, y + deltaY))] as [number, number]
+          );
+          updated[dragInfo.zoneIndex] = { ...zone, points: newPoints };
+        }
+        return updated;
+      });
+    };
+    const handleUp = () => setDragInfo(null);
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragInfo]);
+
   if (!isOpen) return null;
 
   const camera = cameras.find((c) => c.id === cameraId) || cameras[0];
   const activeZone = zones[activeZoneIndex] || null;
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (didDragRef.current) {
+      didDragRef.current = false;
+      return;
+    }
     if (!activeZone) return;
-    const container = e.currentTarget.getBoundingClientRect();
-    const rawX = (e.clientX - container.left) / container.width;
-    const rawY = (e.clientY - container.top) / container.height;
-    const normX = Number(Math.max(0, Math.min(1, rawX)).toFixed(3));
-    const normY = Number(Math.max(0, Math.min(1, rawY)).toFixed(3));
-
+    const pt = getNormalizedPoint(e.clientX, e.clientY);
+    if (!pt) return;
     const updated = [...zones];
-    updated[activeZoneIndex] = { ...activeZone, points: [...activeZone.points, [normX, normY]] };
+    updated[activeZoneIndex] = { ...activeZone, points: [...activeZone.points, pt] };
     setZones(updated);
+  };
+
+  const handleVertexMouseDown = (e: React.MouseEvent, pointIndex: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    didDragRef.current = false;
+    setDragInfo({ type: 'vertex', zoneIndex: activeZoneIndex, pointIndex });
+  };
+
+  const handleShapeMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!activeZone) return;
+    const pt = getNormalizedPoint(e.clientX, e.clientY);
+    if (!pt) return;
+    didDragRef.current = false;
+    setDragInfo({ type: 'shape', zoneIndex: activeZoneIndex, startX: pt[0], startY: pt[1], originalPoints: activeZone.points });
   };
 
   const handleAddZone = () => {
@@ -148,7 +226,7 @@ export const ExclusionZoneModal: React.FC<ExclusionZoneModalProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             {/* Left: drawing canvas */}
             <div className="lg:col-span-8">
-              <div className="relative rounded-2xl overflow-hidden bg-black border border-slate-800 aspect-video">
+              <div ref={containerRef} className="relative rounded-2xl overflow-hidden bg-black border border-slate-800 aspect-video">
                 {camera?.liveImageUrl ? (
                   <img
                     src={camera.liveImageUrl}
@@ -162,34 +240,53 @@ export const ExclusionZoneModal: React.FC<ExclusionZoneModalProps> = ({
                   </div>
                 )}
 
-                {/* SVG polygon overlay for every zone on this camera */}
-                <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                {/* Click-to-add-vertex layer — sits under the zone shapes so
+                    the active zone's fill can intercept mousedown for
+                    whole-shape dragging before this layer sees the click. */}
+                <div className="absolute inset-0 cursor-crosshair" onClick={handleCanvasClick} />
+
+                {/* SVG polygon overlay for every zone on this camera. The
+                    <svg> itself ignores pointer events (so clicks on empty
+                    space still reach the add-vertex layer below); only the
+                    active zone's polygon re-enables them, for shape-dragging. */}
+                <svg
+                  className="absolute inset-0 w-full h-full"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  style={{ pointerEvents: 'none' }}
+                >
                   {zones.map((zone, idx) => {
                     if (zone.points.length < 2) return null;
                     const color = ZONE_COLORS[idx % ZONE_COLORS.length];
                     const pointsAttr = zone.points.map(([x, y]) => `${x * 100},${y * 100}`).join(' ');
+                    const isActive = idx === activeZoneIndex;
                     return (
                       <polygon
                         key={zone.id}
                         points={pointsAttr}
                         fill={color}
-                        fillOpacity={idx === activeZoneIndex ? 0.25 : 0.12}
+                        fillOpacity={isActive ? 0.25 : 0.12}
                         stroke={color}
-                        strokeWidth={idx === activeZoneIndex ? 0.6 : 0.3}
+                        strokeWidth={isActive ? 0.6 : 0.3}
                         vectorEffect="non-scaling-stroke"
+                        onMouseDown={isActive ? handleShapeMouseDown : undefined}
+                        style={isActive ? { pointerEvents: 'auto', cursor: 'move' } : undefined}
                       />
                     );
                   })}
                 </svg>
 
-                {/* Click-to-add-vertex overlay */}
-                <div className="absolute inset-0 cursor-crosshair" onClick={handleCanvasClick}>
+                {/* Vertex handles — topmost layer, each independently
+                    draggable to reshape the active zone. */}
+                <div className="absolute inset-0 pointer-events-none">
                   {activeZone?.points.map(([x, y], ptIdx) => (
                     <div
                       key={ptIdx}
+                      onMouseDown={(e) => handleVertexMouseDown(e, ptIdx)}
+                      onClick={(e) => e.stopPropagation()}
                       style={{ left: `${x * 100}%`, top: `${y * 100}%` }}
-                      className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-md bg-white border border-slate-950 flex items-center justify-center text-[8px] font-mono font-black text-slate-950 shadow-lg"
-                      title={`Point #${ptIdx + 1}`}
+                      className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-md bg-white border border-slate-950 flex items-center justify-center text-[8px] font-mono font-black text-slate-950 shadow-lg cursor-grab active:cursor-grabbing pointer-events-auto"
+                      title={`Point #${ptIdx + 1} — drag to move`}
                     >
                       {ptIdx + 1}
                     </div>
@@ -198,7 +295,7 @@ export const ExclusionZoneModal: React.FC<ExclusionZoneModalProps> = ({
 
                 <div className="absolute bottom-3 left-3 bg-slate-950/90 backdrop-blur px-3 py-1.5 rounded-xl border border-slate-800 text-[10px] font-mono uppercase tracking-wider text-slate-400 shadow flex items-center gap-2 pointer-events-none">
                   <HelpCircle className="w-3.5 h-3.5 text-slate-300" />
-                  <span>Click to place vertices — at least 3 needed for the zone to take effect</span>
+                  <span>Click empty space to add a point — drag a vertex to reshape, or drag inside the zone to move it</span>
                 </div>
               </div>
 

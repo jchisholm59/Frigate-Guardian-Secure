@@ -4,6 +4,35 @@ Backup points created before risky deploys to the live NUC (`192.168.2.210:8100`
 
 ---
 
+## 2026-09-12 — Add Frigate Server form stale-default fix
+
+Before deploying (commit `44d081c`), a backup point was made of the last-known-good build (commit `18319b3` — BirdNET channel fix, running live and stable at the time).
+
+**Git tag:** [`pre-hostmodal-defaults-fix-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-hostmodal-defaults-fix-2026-09-12) at commit `18319b3`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-hostmodal-defaults-fix-20260912-123726/`
+
+Fixes "Server Base URL" and "MQTT Broker Host" in the Add Frigate Server form defaulting to real pre-filled values (`http://localhost:5000`, `localhost`) instead of starting empty — typing into them without first selecting-all inserted at the cursor instead of replacing, producing a garbled concatenated URL that could never connect. Verified live: added a real remote Frigate server (over Tailscale) end-to-end — clean URL, successful probe (discovered its actual cameras), and confirmed it persisted correctly across a reload — before cleaning up the test entry.
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-hostmodal-defaults-fix-20260912-123726 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-hostmodal-defaults-fix-2026-09-12 -- src/components/HostConnectorModal.tsx && npm run build && pm2 restart watchtower"
+```
+
+After either, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## 2026-09-12 — Clip transcode cache pre-warming
 
 Before deploying the MQTT-triggered background clip-transcode warming (commit `0a4fbf2`), a backup point was made of the last-known-good build (commit `36c3bcb` — BirdNET alert filter fix + PORT default fix, running live and stable at the time).

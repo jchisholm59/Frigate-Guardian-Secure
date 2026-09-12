@@ -31,6 +31,15 @@ archive.glob('**/*', {
     '.git/**',
     'public/watchtower-project.zip',
     '*.zip',
+    // Real credentials (Gmail SMTP password, Slack/Discord webhook URLs,
+    // Gemini/OpenSky API keys) live in these — must never end up in a zip
+    // that anyone hitting the (unauthenticated) web UI can download.
+    // .env.example is a template with no real values, so it's fine to keep.
+    '.env',
+    '.env.local',
+    '.env.production',
+    '.env.development',
+    'guardian.env',
   ],
   dot: true,
 });

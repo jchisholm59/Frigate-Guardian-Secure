@@ -2805,6 +2805,15 @@ Return a JSON object with:
           '*.zip',
           'public/*.zip',
           '/tmp/**',
+          // Real credentials (Gmail SMTP password, Slack/Discord webhook
+          // URLs, Gemini/OpenSky API keys) live in these — must never end up
+          // in a zip anyone hitting this (unauthenticated) endpoint can grab.
+          // .env.example is a template with no real values, so it's kept.
+          '.env',
+          '.env.local',
+          '.env.production',
+          '.env.development',
+          'guardian.env',
         ],
         dot: true,
       });

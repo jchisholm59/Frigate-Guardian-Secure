@@ -399,15 +399,27 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
   // selectedCameras is an allow-list: empty means "notify for every camera".
   // Toggling a camera off when the list is currently empty seeds it with
   // every OTHER known camera, so that one camera becomes the only one muted
-  // instead of jumping straight to "only this camera notifies".
+  // instead of jumping straight to "only this camera notifies". Muting the
+  // very last enabled camera would otherwise leave selectedCameras empty
+  // again — indistinguishable from "no filter" — so that case sets
+  // allCamerasMuted instead of just clearing the array.
   const toggleSelectedCamera = (cameraId: string) => {
+    if (localSettings.filters.allCamerasMuted) {
+      // Nothing is currently enabled — enable just this one camera.
+      updateFilters({ allCamerasMuted: false, selectedCameras: [cameraId] });
+      return;
+    }
     const current = localSettings.filters.selectedCameras && localSettings.filters.selectedCameras.length > 0
       ? localSettings.filters.selectedCameras
       : availableCameras.map((c) => c.id);
     const updated = current.includes(cameraId)
       ? current.filter((c) => c !== cameraId)
       : [...current, cameraId];
-    updateFilters({ selectedCameras: updated });
+    if (updated.length === 0) {
+      updateFilters({ allCamerasMuted: true, selectedCameras: [] });
+    } else {
+      updateFilters({ selectedCameras: updated });
+    }
   };
 
   return (
@@ -1775,21 +1787,40 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
                   Camera Notifications
                 </label>
-                {localSettings.filters.selectedCameras && localSettings.filters.selectedCameras.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => updateFilters({ selectedCameras: [] })}
-                    className="text-[10px] uppercase font-bold tracking-wider text-slate-500 hover:text-white"
-                  >
-                    Enable All
-                  </button>
-                )}
+                <div className="flex items-center gap-3">
+                  {!localSettings.filters.allCamerasMuted && (
+                    <button
+                      type="button"
+                      onClick={() => updateFilters({ allCamerasMuted: true, selectedCameras: [] })}
+                      className="text-[10px] uppercase font-bold tracking-wider text-slate-500 hover:text-white"
+                    >
+                      Mute All
+                    </button>
+                  )}
+                  {(localSettings.filters.allCamerasMuted
+                    || (localSettings.filters.selectedCameras && localSettings.filters.selectedCameras.length > 0)) && (
+                    <button
+                      type="button"
+                      onClick={() => updateFilters({ allCamerasMuted: false, selectedCameras: [] })}
+                      className="text-[10px] uppercase font-bold tracking-wider text-slate-500 hover:text-white"
+                    >
+                      Enable All
+                    </button>
+                  )}
+                </div>
               </div>
+              {localSettings.filters.allCamerasMuted && (
+                <p className="text-[10px] uppercase font-bold tracking-wider text-rose-400">
+                  All camera notifications muted — click a camera below to re-enable it
+                </p>
+              )}
               <div className="flex flex-wrap gap-2">
                 {availableCameras.map((cam) => {
-                  const isEnabled = !localSettings.filters.selectedCameras
+                  const isEnabled = !localSettings.filters.allCamerasMuted && (
+                    !localSettings.filters.selectedCameras
                     || localSettings.filters.selectedCameras.length === 0
-                    || localSettings.filters.selectedCameras.includes(cam.id);
+                    || localSettings.filters.selectedCameras.includes(cam.id)
+                  );
                   return (
                     <button
                       key={cam.id}

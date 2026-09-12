@@ -185,6 +185,11 @@ export interface NotificationFilterConfig {
   minThreatLevel: 'all' | 'medium_high' | 'high_only';
   targetLabels: string[];
   selectedCameras: string[];
+  /** An empty selectedCameras[] means "no filter — every camera notifies",
+   *  so muting the very last camera (which empties the array) can't be
+   *  distinguished from never having filtered at all. This flag exists
+   *  purely to represent that "everything muted" state unambiguously. */
+  allCamerasMuted?: boolean;
   cooldownSeconds: number;
   ignoreParkedCars?: boolean;
 }

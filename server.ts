@@ -2893,6 +2893,18 @@ Return a JSON object with:
         }
       }
 
+      // All-cameras-muted is tracked separately from selectedCameras because
+      // an empty selectedCameras[] already means "no filter" (every camera
+      // notifies) — muting the last camera would otherwise produce that same
+      // empty array and silently re-enable every camera instead of muting all.
+      if (filters.allCamerasMuted) {
+        recordNotificationLog({
+          channel: 'all', status: 'skipped', eventId: event.id, camera: event.camera, label: event.label,
+          message: 'Skipped: All camera notifications are muted',
+        });
+        return { success: true, skipped: true, reason: 'Filtered out: all camera notifications muted' };
+      }
+
       // Check camera filter
       if (Array.isArray(filters.selectedCameras) && filters.selectedCameras.length > 0) {
         if (!filters.selectedCameras.includes(event.camera)) {

@@ -19,6 +19,20 @@ If you find WatchTower useful, consider starring and supporting those projects d
 
 ---
 
+## 🎯 Finally Fixes Frigate's Parked-Car Problem
+
+Your own car re-triggering as a "new" detection every time light or shadow shifts is one of the most-discussed unsolved annoyances in the Frigate community — zones, masks, object filters inside Frigate itself don't reliably fix it long-term. WatchTower doesn't try to fix it in Frigate. It sidesteps the problem entirely.
+
+**Exclusion Zones** let you draw a region directly on a camera's real live frame — around a car in the driveway, a flag, a tree branch, anything that keeps falsely triggering. Any detection centered inside that zone is silently skipped *before* a notification goes out, independent of whatever Frigate itself concludes about the object's motion. The event still records and still shows up in Review — you just stop hearing about it.
+
+*   **Draw, drag, done:** click to place vertices, drag any vertex to reshape, drag inside the shape to move the whole zone — no redrawing from scratch when the car parks a few feet differently.
+*   **Per camera, unlimited zones:** cover more than one trouble spot per camera, any polygon shape, any number of points.
+*   **See it, don't guess:** the Snapshot Viewer and 10-Second Playback windows both show your configured zones overlaid on the real footage, so you can check at a glance whether a past event would have been filtered.
+
+Find it in **Notifications → Alert Rules → Exclusion Zones**.
+
+---
+
 ## ✨ Key Features
 
 ### 🚀 Real-Time Tactical Hub
@@ -34,7 +48,8 @@ If you find WatchTower useful, consider starring and supporting those projects d
 *   **Per-Camera Control:** Mute notifications for individual cameras without affecting recording or the Review feed.
 
 ### 🧠 Advanced AI Filtering & Analysis
-*   **Parked Car Logic:** Stop notification fatigue with intelligent filtering for stationary vehicles.
+*   **Exclusion Zones:** Draw a region around a chronic false-trigger spot (a parked car, a flag, a tree branch) — detections centered inside it never reach a notification, regardless of what Frigate itself thinks about the object's motion. See the highlight above.
+*   **Parked Car Logic:** A lighter-weight companion — trusts Frigate's own `stationary` flag to filter vehicle alerts, no zone drawing required. Exclusion Zones are the more reliable option when that flag gets fooled by changing light/shadow.
 *   **Tactical AI Briefs:** Integrated with **Google Gemini 1.5 Flash** to generate human-readable security assessments of events.
 *   **Natural Language Search:** Find specific events using AI-powered search (e.g., *"Show me all the delivery trucks from yesterday morning"*).
 

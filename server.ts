@@ -416,7 +416,7 @@ function getAiClient(): GoogleGenAI | null {
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = Number(process.env.PORT) || 8100;
 
   app.use(express.json());
 

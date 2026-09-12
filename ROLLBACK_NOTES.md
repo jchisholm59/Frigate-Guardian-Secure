@@ -87,6 +87,37 @@ curl -s http://192.168.2.210:8100/api/birds/status
 
 ---
 
+## 2026-09-12 — Username/password login
+
+Before deploying optional login (commit `215b9f2`), a backup point was made of the last-known-good build (commit `1477464` — the `.env` zip-leak fix, running live and stable at the time).
+
+**Git tag:** [`pre-login-auth-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-login-auth-2026-09-12) at commit `1477464`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-login-auth-20260912-085509/`
+
+This one shipped inert — auth only turns on once `AUTH_USERNAME`/`AUTH_PASSWORD` are set in `.env` on the NUC and the app is restarted. Verified live immediately after deploy: `/api/auth/status` returned `authEnabled: false` and `/api/birds/sightings` was still reachable, i.e. zero behavior change until credentials are actually configured.
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-login-auth-20260912-085509 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit (also removes the login UI/routes entirely, not just disables them):**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-login-auth-2026-09-12 -- server.ts src/App.tsx src/components/Navbar.tsx package.json package-lock.json .env.example && git rm -f src/components/LoginView.tsx && npm install && npm run build && pm2 restart watchtower"
+```
+
+Simpler alternative if login is on and just needs to come back off without a full revert: remove/comment out `AUTH_USERNAME`/`AUTH_PASSWORD` from `.env` and `pm2 restart watchtower` — the app falls back to open access immediately, no rebuild needed.
+
+After any of the above, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## General pattern for future backup points
 
 Before deploying a change you might want to undo:

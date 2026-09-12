@@ -186,6 +186,56 @@ async function transcodeToFile(url: string, outPath: string): Promise<void> {
   console.log(`[Clip Transcode] Software encode finished in ${Date.now() - startedAt}ms`);
 }
 
+// Transcodes are triggered both by an on-demand playback request and by the
+// background cache-warming pass below — without this, an event opened right
+// as its warm-up transcode is still running would start a second, redundant
+// ffmpeg process racing to write the same cache file. Callers await the
+// shared promise instead of starting their own.
+const inFlightTranscodes = new Map<string, Promise<void>>();
+function ensureTranscodedClip(url: string): { cachedPath: string; ready: Promise<void> } {
+  const cacheKey = crypto.createHash('sha1').update(url).digest('hex');
+  const cachedPath = path.join(CLIP_CACHE_DIR, `${cacheKey}.mp4`);
+
+  if (fs.existsSync(cachedPath)) {
+    return { cachedPath, ready: Promise.resolve() };
+  }
+
+  let ready = inFlightTranscodes.get(cachedPath);
+  if (!ready) {
+    ready = transcodeToFile(url, cachedPath).finally(() => {
+      inFlightTranscodes.delete(cachedPath);
+    });
+    inFlightTranscodes.set(cachedPath, ready);
+  }
+  return { cachedPath, ready };
+}
+
+// Proactively transcode a just-finished event's clip in the background, right
+// after Frigate reports it via MQTT, instead of waiting for a user to open it.
+// This is what actually fixes the request-time race with Frigate finalizing
+// the clip (ffprobe timeout, see probeVideoCodec above): the background pass
+// can afford to wait out that same timeout/retry because nobody is staring at
+// a spinner for it, and by the time someone does click into the event, the
+// cache is very likely already warm. The synchronous on-request path stays as
+// the fallback for events this misses (cache warming disabled, server just
+// restarted, etc.) — this never removes that path, only front-runs it.
+async function warmClipCacheIfNeeded(eventId: string, frigateServerUrl: string) {
+  try {
+    const fullUrl = `${frigateServerUrl.replace(/\/$/, '')}/api/events/${eventId}/clip.mp4`;
+    const codec = await probeVideoCodec(fullUrl);
+    if (codec !== 'hevc') return; // H.264 clips are served with a cheap passthrough — nothing to pre-warm.
+
+    console.log(`[Clip Cache Warm] Pre-transcoding HEVC clip for event ${eventId}`);
+    const startedAt = Date.now();
+    await ensureTranscodedClip(fullUrl).ready;
+    console.log(`[Clip Cache Warm] Cache warmed for event ${eventId} in ${Date.now() - startedAt}ms`);
+  } catch (err) {
+    // Never fatal — the on-request path in the clip proxy route will just
+    // transcode it (again, or for the first time) when someone opens it.
+    console.error(`[Clip Cache Warm] Failed to pre-warm event ${eventId}: ${(err as Error).message}`);
+  }
+}
+
 // Serve a local file with HTTP Range support (206 Partial Content), so the
 // 10-second scrubber works on transcoded/cached clips too.
 function serveFileWithRange(req: express.Request, res: express.Response, filePath: string, contentType: string) {
@@ -1557,6 +1607,13 @@ Return a JSON object with:
               });
             }
 
+            // Fire-and-forget: start warming the clip transcode cache the moment
+            // Frigate reports the event finished, instead of waiting for someone
+            // to open it. Not awaited — must never delay MQTT message processing.
+            if (eventType === 'end' && evtData.id && evtData.has_clip !== false && activeMqttConfig.frigateServerUrl) {
+              warmClipCacheIfNeeded(String(evtData.id), activeMqttConfig.frigateServerUrl);
+            }
+
             if (evtData && evtData.camera && evtData.label) {
               summary = `[EVENT] ${evtData.type || 'new'}: ${evtData.label} on ${evtData.camera} (${Math.round((evtData.top_score || 0.85) * 100)}%)`;
 
@@ -1970,15 +2027,14 @@ Return a JSON object with:
       // only flushes MP4 fragments at keyframe boundaries, so the browser
       // can end up waiting past its own load timeout for the first bytes.
       // Transcoding to a complete file first (cached by source URL so a
-      // replay is instant) sidesteps that entirely.
-      const cacheKey = crypto.createHash('sha1').update(fullUrl).digest('hex');
-      const cachedPath = path.join(CLIP_CACHE_DIR, `${cacheKey}.mp4`);
+      // replay is instant) sidesteps that entirely. ensureTranscodedClip
+      // shares this with the MQTT-triggered background cache warm below, so
+      // if that already finished (or is still running) for this event, we
+      // reuse it instead of starting a second, redundant ffmpeg process.
+      const { cachedPath, ready } = ensureTranscodedClip(fullUrl);
 
       try {
-        if (!fs.existsSync(cachedPath)) {
-          console.log(`[Clip Proxy] Transcoding HEVC clip to H.264: ${fullUrl}`);
-          await transcodeToFile(fullUrl, cachedPath);
-        }
+        await ready;
         serveFileWithRange(req, res, cachedPath, 'video/mp4');
       } catch (err) {
         console.error(`[Clip Proxy] Transcode failed: ${(err as Error).message}`);

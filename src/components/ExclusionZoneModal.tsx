@@ -129,9 +129,24 @@ export const ExclusionZoneModal: React.FC<ExclusionZoneModalProps> = ({
       didDragRef.current = false;
       return;
     }
-    if (!activeZone) return;
     const pt = getNormalizedPoint(e.clientX, e.clientY);
     if (!pt) return;
+
+    if (!activeZone) {
+      // Clicking the canvas with no zone selected (e.g. a fresh camera with
+      // none yet) used to silently do nothing — required knowing to hit
+      // "+ Add" first, which isn't obvious. Create one on the fly instead,
+      // so the canvas is never a dead click target.
+      const newZone: ExclusionZone = {
+        id: `excl-${Date.now()}`,
+        name: `Excluded Area ${zones.length + 1}`,
+        points: [pt],
+      };
+      setZones([...zones, newZone]);
+      setActiveZoneIndex(zones.length);
+      return;
+    }
+
     const updated = [...zones];
     updated[activeZoneIndex] = { ...activeZone, points: [...activeZone.points, pt] };
     setZones(updated);

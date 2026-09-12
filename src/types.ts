@@ -247,8 +247,10 @@ export interface FlightDetail {
   route?: {
     airline?: string;
     originName?: string;
+    originCity?: string;
     originIata?: string;
     destinationName?: string;
+    destinationCity?: string;
     destinationIata?: string;
     /** Unix ms — only present when OpenSky credentials are configured */
     departureTime?: number;

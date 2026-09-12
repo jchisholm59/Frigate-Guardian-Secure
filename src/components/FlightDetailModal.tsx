@@ -7,6 +7,16 @@ interface FlightDetailModalProps {
   onClose: () => void;
 }
 
+// A bare 3/4-letter airport designator (IATA "YHZ" or, for OpenSky-only
+// matches with no adsbdb data, ICAO "CYHZ") isn't legible on its own — pair
+// it with the plain city name when we have one (preferred over the longer
+// official airport name, e.g. "Halifax" over "Halifax / Stanfield Intl.").
+function formatAirport(code: string | undefined, city: string | undefined, name: string | undefined): string {
+  if (!code) return name || '?';
+  const label = city || name;
+  return label && label !== code ? `${code} (${label})` : code;
+}
+
 export const FlightDetailModal: React.FC<FlightDetailModalProps> = ({ aircraft, onClose }) => {
   const [detail, setDetail] = useState<FlightDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -107,9 +117,13 @@ export const FlightDetailModal: React.FC<FlightDetailModalProps> = ({ aircraft, 
               {detail?.route ? (
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-3 text-sm">
-                    <span className="text-white font-bold">{detail.route.originIata || detail.route.originName || '?'}</span>
+                    <span className="text-white font-bold">
+                      {formatAirport(detail.route.originIata, detail.route.originCity, detail.route.originName)}
+                    </span>
                     <span className="text-slate-500">→</span>
-                    <span className="text-white font-bold">{detail.route.destinationIata || detail.route.destinationName || '?'}</span>
+                    <span className="text-white font-bold">
+                      {formatAirport(detail.route.destinationIata, detail.route.destinationCity, detail.route.destinationName)}
+                    </span>
                     {detail.route.airline && <span className="text-slate-400 text-xs ml-2">({detail.route.airline})</span>}
                   </div>
                   {(detail.route.departureTime || detail.route.arrivalTime) && (

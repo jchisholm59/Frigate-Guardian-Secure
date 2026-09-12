@@ -268,10 +268,17 @@ export function createFlightService(deps: FlightServiceDeps) {
                   // Prefer adsbdb's named/IATA route when it has one (mostly
                   // scheduled airline flights); fall back to OpenSky's
                   // ADS-B-derived ICAO airports, which cover far more general
-                  // aviation / private / military traffic.
+                  // aviation / private / military traffic. adsbdb also gives
+                  // a plain city (`municipality`, e.g. "Halifax") alongside
+                  // the full official airport name — the city is what makes
+                  // a bare 3/4-letter code ("YHZ") actually legible, so the
+                  // UI shows that in preference to the longer official name.
+                  // OpenSky-only matches have neither, just the ICAO code.
                   originName: route?.origin?.name || openskyRoute?.originIcao,
+                  originCity: route?.origin?.municipality,
                   originIata: route?.origin?.iata_code,
                   destinationName: route?.destination?.name || openskyRoute?.destinationIcao,
+                  destinationCity: route?.destination?.municipality,
                   destinationIata: route?.destination?.iata_code,
                   // Only OpenSky ever has actual times — adsbdb never does.
                   departureTime: openskyRoute?.departureTime,

@@ -328,6 +328,7 @@ const SETTINGS_FILE = path.join(DATA_DIR, 'notification_settings.json');
 const MQTT_CONFIG_FILE = path.join(DATA_DIR, 'mqtt_config.json');
 const BIRD_SIGHTINGS_FILE = path.join(DATA_DIR, 'bird_sightings.json');
 const SERVERS_FILE = path.join(DATA_DIR, 'frigate_servers.json');
+const BIRD_ALERT_STATE_FILE = path.join(DATA_DIR, 'bird_alert_state.json');
 
 // Signs the login session cookie. Generated once and persisted outside the
 // repo (in DATA_DIR, same as everything else here) so sessions survive a
@@ -440,8 +441,37 @@ let persistentSettings: any = {
 
 let birdSightings: any[] = [];
 let speciesFactCache: Record<string, string> = {};
+
+// Which species have already triggered a "first sighting today" alert, and
+// for which day. Local (server) date, not UTC — the server runs in the
+// same timezone as the property, so this lines up with the user's actual
+// calendar day instead of resetting hours early/late at UTC midnight.
+// Persisted to disk: this was previously in-memory only, so every
+// `pm2 restart` (any deploy, or an unrelated crash/reboot) silently wiped
+// it and let every species already seen that day alert again as "first".
+function localDateKey(d: Date = new Date()): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 let dailyAlertedSpecies = new Set<string>();
-let lastBirdAlertReset = new Date().getUTCDate();
+let lastBirdAlertResetDateKey = localDateKey();
+try {
+  if (fs.existsSync(BIRD_ALERT_STATE_FILE)) {
+    const saved = JSON.parse(fs.readFileSync(BIRD_ALERT_STATE_FILE, 'utf-8'));
+    if (saved.date === lastBirdAlertResetDateKey && Array.isArray(saved.species)) {
+      dailyAlertedSpecies = new Set<string>(saved.species);
+      console.log(`[Bird AI] Restored ${dailyAlertedSpecies.size} already-alerted species for today from disk`);
+    }
+  }
+} catch (err) {
+  console.warn('[Bird AI] Failed to load persisted daily alert state:', err);
+}
+function saveDailyAlertState() {
+  try {
+    fs.writeFileSync(BIRD_ALERT_STATE_FILE, JSON.stringify({ date: lastBirdAlertResetDateKey, species: [...dailyAlertedSpecies] }));
+  } catch (err) {
+    console.warn('[Bird AI] Failed to persist daily alert state:', err);
+  }
+}
 
 // Configured Frigate servers, persisted so a fresh browser / another device
 // gets the same server list (URLs, keys) instead of an empty console.
@@ -896,15 +926,17 @@ async function startServer() {
             console.log(`[BirdNET] Heard: ${sighting.commonName} (${Math.round(sighting.confidence * 100)}%)`);
 
             // --- DAILY FIRST DETECTION ALERTS ---
-            const today = new Date().getUTCDate();
-            if (lastBirdAlertReset !== today) {
+            const todayKey = localDateKey();
+            if (lastBirdAlertResetDateKey !== todayKey) {
               dailyAlertedSpecies.clear();
-              lastBirdAlertReset = today;
+              lastBirdAlertResetDateKey = todayKey;
+              saveDailyAlertState();
               console.log('[Bird AI] Daily alert tracking reset for new day');
             }
 
             if (!dailyAlertedSpecies.has(commonName) && sighting.confidence > 0.6 && persistentSettings.birdnet?.sendDailyAlerts) {
               dailyAlertedSpecies.add(commonName);
+              saveDailyAlertState();
 
               // A configured alertChannels list narrows delivery to just
               // those channels (still requires the channel itself to be
@@ -1666,26 +1698,49 @@ Return a JSON object with:
       }
 
       const rawEvents: any[] = await eventsResp.json();
+
+      // Per-camera detect resolution for box normalization below — this
+      // endpoint doesn't share activeMqttConfig's cache since it can target
+      // any Frigate server the caller names, not just the currently-connected one.
+      const resolutionByCamera: Record<string, { width: number; height: number }> = {};
+      try {
+        const configResp = await fetch(`${baseUrl}/api/config`, { headers });
+        if (configResp.ok) {
+          const config: any = await configResp.json();
+          for (const [camId, camConfig] of Object.entries<any>(config.cameras || {})) {
+            const width = camConfig?.detect?.width;
+            const height = camConfig?.detect?.height;
+            if (typeof width === 'number' && typeof height === 'number') {
+              resolutionByCamera[camId] = { width, height };
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[Proxy] Could not fetch detect resolution for event normalization:', err);
+      }
+
       const normalizedEvents = rawEvents.map((evt) => {
+        const detectResolution = resolutionByCamera[evt.camera] || { width: 1280, height: 720 };
         // Frigate timestamps are in epoch seconds (e.g. 1610740922.1234)
         const startSec = evt.start_time || Date.now() / 1000;
         const endSec = evt.end_time || startSec + (evt.data?.duration || 10);
         const duration = Math.max(1, Math.round(endSec - startSec));
 
-        // Frigate box coordinates are [y_min, x_min, y_max, x_max] (or normalized)
+        // Frigate box coordinates are [x_min, y_min, x_max, y_max] in the
+        // camera's detect-resolution pixel space (or normalized) — see
+        // getCameraDetectResolution for how the live MQTT path resolves this.
         let box = { x: 0.25, y: 0.25, width: 0.35, height: 0.45 };
         if (Array.isArray(evt.box) && evt.box.length === 4) {
-          const [ymin, xmin, ymax, xmax] = evt.box;
+          const [xmin, ymin, xmax, ymax] = evt.box;
           // Check if normalized or pixel
           if (xmax <= 1 && ymax <= 1) {
             box = { x: xmin, y: ymin, width: xmax - xmin, height: ymax - ymin };
           } else {
-            // Assume 1920x1080 default frame if raw pixels
             box = {
-              x: Math.max(0, xmin / 1920),
-              y: Math.max(0, ymin / 1080),
-              width: Math.max(0.05, (xmax - xmin) / 1920),
-              height: Math.max(0.05, (ymax - ymin) / 1080),
+              x: Math.max(0, xmin / detectResolution.width),
+              y: Math.max(0, ymin / detectResolution.height),
+              width: Math.max(0.05, (xmax - xmin) / detectResolution.width),
+              height: Math.max(0.05, (ymax - ymin) / detectResolution.height),
             };
           }
         }
@@ -1756,6 +1811,37 @@ Return a JSON object with:
       fs.writeFileSync(MQTT_CONFIG_FILE, newData);
     } catch (err) {
       console.error('[MQTT] Failed to save configuration to disk:', err);
+    }
+  }
+
+  // Per-camera detect resolution, used to convert an event's pixel `box`
+  // into 0-1 normalized coordinates. This must be the camera's DETECT
+  // resolution (frigate/config.yaml `detect.width/height`), which is
+  // frequently lower than and independent of its recording/stream
+  // resolution — using a fixed 1920x1080 guess here silently misplaces
+  // every normalized box (and therefore every exclusion-zone check) on
+  // any camera whose detect resolution differs, e.g. 1280x720.
+  const cameraDetectResolutionCache: Record<string, { width: number; height: number }> = {};
+  async function getCameraDetectResolution(camera: string): Promise<{ width: number; height: number }> {
+    const cached = cameraDetectResolutionCache[camera];
+    if (cached) return cached;
+    const fallback = { width: 1280, height: 720 };
+    if (!activeMqttConfig.frigateServerUrl) return fallback;
+    try {
+      const resp = await fetch(`${activeMqttConfig.frigateServerUrl.replace(/\/$/, '')}/api/config`);
+      if (!resp.ok) return fallback;
+      const config: any = await resp.json();
+      for (const [camId, camConfig] of Object.entries<any>(config.cameras || {})) {
+        const width = camConfig?.detect?.width;
+        const height = camConfig?.detect?.height;
+        if (typeof width === 'number' && typeof height === 'number') {
+          cameraDetectResolutionCache[camId] = { width, height };
+        }
+      }
+      return cameraDetectResolutionCache[camera] || fallback;
+    } catch (err) {
+      console.warn(`[MQTT] Could not fetch detect resolution for ${camera}:`, err);
+      return fallback;
     }
   }
   const mqttStatus = {
@@ -1865,7 +1951,7 @@ Return a JSON object with:
         broadcastToSse({ type: 'status', status: mqttStatus });
       });
 
-      client.on('message', (topic, messageBuffer) => {
+      client.on('message', async (topic, messageBuffer) => {
         const strPayload = messageBuffer.toString('utf-8');
         mqttStatus.lastReceivedAt = Date.now();
         mqttStatus.messageCount += 1;
@@ -1905,15 +1991,21 @@ Return a JSON object with:
 
               let box = { x: 0.25, y: 0.25, width: 0.35, height: 0.45 };
               if (Array.isArray(evtData.box) && evtData.box.length === 4) {
-                const [ymin, xmin, ymax, xmax] = evtData.box;
+                // Frigate publishes box as [x_min, y_min, x_max, y_max] in
+                // the camera's DETECT-resolution pixel space (verified
+                // against a live capture + Frigate's own normalized
+                // path_data on the same event), not [y_min,x_min,y_max,x_max]
+                // and not the recording/stream resolution.
+                const [xmin, ymin, xmax, ymax] = evtData.box;
                 if (xmax <= 1 && ymax <= 1) {
                   box = { x: xmin, y: ymin, width: xmax - xmin, height: ymax - ymin };
                 } else {
+                  const { width: detectW, height: detectH } = await getCameraDetectResolution(evtData.camera);
                   box = {
-                    x: Math.max(0, xmin / 1920),
-                    y: Math.max(0, ymin / 1080),
-                    width: Math.max(0.05, (xmax - xmin) / 1920),
-                    height: Math.max(0.05, (ymax - ymin) / 1080),
+                    x: Math.max(0, xmin / detectW),
+                    y: Math.max(0, ymin / detectH),
+                    width: Math.max(0.05, (xmax - xmin) / detectW),
+                    height: Math.max(0.05, (ymax - ymin) / detectH),
                   };
                 }
               }

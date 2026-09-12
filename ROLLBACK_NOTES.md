@@ -58,6 +58,35 @@ curl -s http://192.168.2.210:8100/api/birds/status
 
 ---
 
+## 2026-09-12 — Fix .env leak in Download ZIP feature (security)
+
+Before deploying the fix for `.env`/`guardian.env` (real Gmail SMTP password, Slack/Discord webhooks, Gemini API key) being bundled into the "Download ZIP" feature's output — reachable by anyone hitting the unauthenticated web UI — a backup point was made of the last-known-good build (commit `568437b` — flight route city names, running live and stable at the time).
+
+**Git tag:** [`pre-env-zip-leak-fix-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-env-zip-leak-fix-2026-09-12) at commit `568437b`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-env-zip-leak-fix-20260912-084630/`
+
+⚠️ **Do not revert this one without a reason that outweighs the security fix** — rolling back re-opens the leak (anyone who can reach the web UI can re-download `.env` in plaintext). If you ever do revert it, rotate the exposed Gmail app password, Slack webhook, Discord webhook, and Gemini API key immediately after.
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-env-zip-leak-fix-20260912-084630 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-env-zip-leak-fix-2026-09-12 -- scripts/make-zip.cjs server.ts && npm run build && pm2 restart watchtower"
+```
+
+After either, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## General pattern for future backup points
 
 Before deploying a change you might want to undo:

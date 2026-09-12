@@ -4,6 +4,35 @@ Backup points created before risky deploys to the live NUC (`192.168.2.210:8100`
 
 ---
 
+## 2026-09-12 — Exclusion zone drag-to-move/reshape
+
+Before deploying (commit `e8fc78c`), a backup point was made of the last-known-good build (commit `13ef340` — exclusion zones feature, running live and stable at the time).
+
+**Git tag:** [`pre-zone-dragging-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-zone-dragging-2026-09-12) at commit `13ef340`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-zone-dragging-20260912-165010/`
+
+Adds real dragging to the exclusion zone editor: drag a vertex to reshape a corner, or drag inside the shape to move the whole zone — previously the only way to adjust an existing zone was Clear Vertices + redraw. Verified live: dragged a zone as a whole shape, then reshaped one vertex into an irregular quadrilateral, confirmed no stray vertex from either drag's trailing click, confirmed the result persists correctly after Save.
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-zone-dragging-20260912-165010 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-zone-dragging-2026-09-12 -- src/components/ExclusionZoneModal.tsx && npm run build && pm2 restart watchtower"
+```
+
+After either, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## 2026-09-12 — Exclusion zones feature
 
 Before deploying (commit `13ef340`), a backup point was made of the last-known-good build (commit `79f290b` — BirdNET clip-link fix, running live and stable at the time).

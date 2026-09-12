@@ -128,17 +128,37 @@ The application will be available at `http://localhost:8100` (configurable via t
 
 **Persistent Data:**
 Docker will automatically create a volume to persist your settings:
-- `guardian_data`: Persists `notification_settings.json`, `mqtt_config.json`, and the transcoded clip cache in the `/app/data` directory inside the container.
+- `guardian_data`: Persists `notification_settings.json`, `mqtt_config.json`, `users.json` (login accounts), and the transcoded clip cache in the `/app/data` directory inside the container.
 
 **Troubleshooting & Maintenance:**
 - **View logs:** `docker compose logs -f`
 - **Restart:** `docker compose restart`
-- **Full Reset (Wipes all settings & credentials):**
-  If you want to perform a truly clean install and wipe all persisted settings from the Docker volume:
+- **Full Reset (Wipes all settings, credentials, and login accounts):**
+  If you want to perform a truly clean install and wipe all persisted settings from the Docker volume — this also deletes every account, so the next start re-seeds the default `admin`/`watchtower` login:
   ```bash
   docker compose down -v
   docker compose up -d --build
   ```
+
+---
+
+## 🔐 Login & Accounts
+WatchTower requires signing in — there's no way to reach the dashboard, live feeds, or any API route without an account.
+
+**First run:** if no accounts exist yet, WatchTower seeds a default one automatically:
+```
+Username: admin
+Password: watchtower
+```
+Log in with that immediately and change the password (top-right **Account** menu → *Change My Password*) — don't leave it at the default, especially if this server is reachable from outside your LAN.
+
+**Two roles:**
+*   **Admin** — full access, including adding/removing accounts and changing shared system configuration: Frigate servers, MQTT, and the Notifications settings screen (which covers Gmail/Slack/Discord/Filters, BirdNET-Go, Tides, Flights/PiAware, and Weather).
+*   **Standard** — identical use of the app otherwise (live feeds, event review, Birds/Tides/Flights/Weather tabs, AI search, etc.), but can't touch any of the configuration above — it's hidden from the UI entirely and rejected server-side if requested directly. Good for other household members who should be able to use WatchTower without being able to break it.
+
+**Managing accounts:** any admin can add more accounts (admin or standard) from the **Account** menu, and reset another user's password if they forget it — there's no email-based recovery. Every logged-in user can change their own password from the same menu.
+
+Accounts are stored in `<data dir>/users.json` (`~/.frigate-guardian/users.json`, or `/app/data/users.json` under Docker) — bcrypt-hashed passwords, never committed to git, never leave your server.
 
 ---
 
@@ -185,7 +205,8 @@ The **Weather** tab refreshes every 10 minutes, matching the server-side cache.
 ---
 
 ## 🔒 Security & Privacy
-*   **Local First:** Your passwords and configuration are stored locally in `~/.frigate-guardian` (or `/app/data` under Docker) and never uploaded to the cloud.
+*   **Login Required:** See [Login & Accounts](#-login--accounts) above — every route requires a signed-in session, with admin/standard roles separating "use the app" from "reconfigure the app."
+*   **Local First:** Your passwords, integration credentials, and account list are stored locally in `~/.frigate-guardian` (or `/app/data` under Docker) and never uploaded to the cloud.
 *   **Encrypted Streams:** Supports HTTPS and secure WebSocket (WSS) for camera intercepts.
 
 ---

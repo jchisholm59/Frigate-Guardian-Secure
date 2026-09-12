@@ -612,6 +612,7 @@ async function startServer() {
                 // Construct a "Bird Event" for the notification engine
                 const birdEvent = {
                   id: sighting.id,
+                  source: 'birdnet' as const,
                   camera: sighting.sourceNode,
                   label: commonName,
                   score: sighting.confidence,
@@ -2529,25 +2530,30 @@ Return a JSON object with:
       return { success: true, skipped: true, reason: 'Filtered out: threat level is low' };
     }
 
-    // Check target labels filter
-    if (Array.isArray(filters.targetLabels) && filters.targetLabels.length > 0) {
-      if (!filters.targetLabels.includes(event.label)) {
-        recordNotificationLog({
-          channel: 'all', status: 'skipped', eventId: event.id, camera: event.camera, label: event.label,
-          message: `Skipped: Label "${event.label}" not in target list [${filters.targetLabels.join(', ')}]`,
-        });
-        return { success: true, skipped: true, reason: `Filtered out: label "${event.label}" not in target list` };
+    // Target labels & camera allow-lists are for Frigate object-detection events only.
+    // BirdNET sightings use species names as their "label" and a sensor node as their
+    // "camera", which will never match those lists, so bird events bypass both checks.
+    if (event.source !== 'birdnet') {
+      // Check target labels filter
+      if (Array.isArray(filters.targetLabels) && filters.targetLabels.length > 0) {
+        if (!filters.targetLabels.includes(event.label)) {
+          recordNotificationLog({
+            channel: 'all', status: 'skipped', eventId: event.id, camera: event.camera, label: event.label,
+            message: `Skipped: Label "${event.label}" not in target list [${filters.targetLabels.join(', ')}]`,
+          });
+          return { success: true, skipped: true, reason: `Filtered out: label "${event.label}" not in target list` };
+        }
       }
-    }
 
-    // Check camera filter
-    if (Array.isArray(filters.selectedCameras) && filters.selectedCameras.length > 0) {
-      if (!filters.selectedCameras.includes(event.camera)) {
-        recordNotificationLog({
-          channel: 'all', status: 'skipped', eventId: event.id, camera: event.camera, label: event.label,
-          message: `Skipped: Camera "${event.camera}" not in selected list`,
-        });
-        return { success: true, skipped: true, reason: `Filtered out: camera "${event.camera}" not in selected list` };
+      // Check camera filter
+      if (Array.isArray(filters.selectedCameras) && filters.selectedCameras.length > 0) {
+        if (!filters.selectedCameras.includes(event.camera)) {
+          recordNotificationLog({
+            channel: 'all', status: 'skipped', eventId: event.id, camera: event.camera, label: event.label,
+            message: `Skipped: Camera "${event.camera}" not in selected list`,
+          });
+          return { success: true, skipped: true, reason: `Filtered out: camera "${event.camera}" not in selected list` };
+        }
       }
     }
 

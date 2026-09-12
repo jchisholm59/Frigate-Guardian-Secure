@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FrigateEvent, CameraStream, MqttStatusInfo } from '../types';
+import { FrigateEvent, CameraStream, MqttStatusInfo, ExclusionZone } from '../types';
 import {
   Layers,
   AlertTriangle,
@@ -45,6 +45,7 @@ interface EventsReviewProps {
   mqttStatus?: MqttStatusInfo;
   onSimulateMqttEvent?: () => Promise<void> | void;
   onOpenHostModal?: () => void;
+  exclusionZones?: Record<string, ExclusionZone[]>;
 }
 
 export const EventsReview: React.FC<EventsReviewProps> = ({
@@ -60,6 +61,7 @@ export const EventsReview: React.FC<EventsReviewProps> = ({
   mqttStatus,
   onSimulateMqttEvent,
   onOpenHostModal,
+  exclusionZones,
 }) => {
   const [selectedImportance, setSelectedImportance] = useState<'all' | 'alert' | 'detection' | 'mqtt'>('all');
   const [selectedCamera, setSelectedCamera] = useState<string>('all');
@@ -592,6 +594,7 @@ export const EventsReview: React.FC<EventsReviewProps> = ({
         event={snapshotEvent}
         camera={cameras.find((c) => c.id === snapshotEvent?.camera)}
         onClose={() => setSnapshotEvent(null)}
+        exclusionZones={snapshotEvent ? exclusionZones?.[snapshotEvent.camera] : undefined}
         onOpenPlayback={(evt) => {
           setSnapshotEvent(null);
           setPlaybackEvent(evt);
@@ -604,6 +607,7 @@ export const EventsReview: React.FC<EventsReviewProps> = ({
         event={playbackEvent}
         camera={cameras.find((c) => c.id === playbackEvent?.camera)}
         onClose={() => setPlaybackEvent(null)}
+        exclusionZones={playbackEvent ? exclusionZones?.[playbackEvent.camera] : undefined}
         onOpenSnapshot={(evt) => {
           setPlaybackEvent(null);
           setSnapshotEvent(evt);

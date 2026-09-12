@@ -17,7 +17,9 @@ import {
   Shield,
   Maximize2,
 } from 'lucide-react';
-import { FrigateEvent, CameraStream } from '../types';
+import { FrigateEvent, CameraStream, ExclusionZone } from '../types';
+
+const ZONE_COLORS = ['#ef4444', '#f59e0b', '#a855f7', '#06b6d4', '#ec4899'];
 
 interface TenSecondPlaybackModalProps {
   isOpen: boolean;
@@ -25,6 +27,10 @@ interface TenSecondPlaybackModalProps {
   camera?: CameraStream;
   onClose: () => void;
   onOpenSnapshot: (event: FrigateEvent) => void;
+  /** This camera's configured exclusion zones, drawn over the playback
+   *  window in place of the old per-event box — shows why a detection here
+   *  would (or wouldn't) get filtered before an alert goes out. */
+  exclusionZones?: ExclusionZone[];
 }
 
 export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
@@ -33,13 +39,14 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
   camera,
   onClose,
   onOpenSnapshot,
+  exclusionZones,
 }) => {
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [currentTime, setCurrentTime] = useState<number>(0); // 0 to 10 seconds
   const [speed, setSpeed] = useState<number>(1);
   const [isLooping, setIsLooping] = useState<boolean>(true);
   const [isMuted, setIsMuted] = useState<boolean>(false);
-  const [showBox, setShowBox] = useState<boolean>(true);
+  const [showZones, setShowZones] = useState<boolean>(true);
   const [videoError, setVideoError] = useState<boolean>(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -124,7 +131,7 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
         if (canvas) {
           const ctx = canvas.getContext('2d');
           if (ctx) {
-            drawPlaybackScene(ctx, canvas.width, canvas.height, event, currentTime, showBox);
+            drawPlaybackScene(ctx, canvas.width, canvas.height, event, currentTime);
           }
         }
       }
@@ -137,7 +144,7 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [isOpen, event, isPlaying, speed, isLooping, showBox, videoError, currentTime]);
+  }, [isOpen, event, isPlaying, speed, isLooping, videoError, currentTime]);
 
   if (!isOpen || !event) return null;
 
@@ -213,6 +220,29 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
               height={450}
               className="w-full h-full object-contain bg-[#0D0E10]"
             />
+          )}
+
+          {/* This camera's exclusion zones — overlaid on top of either the
+              real clip or the simulated canvas, so you can see whether the
+              detection is (or should be) inside a filtered area. */}
+          {showZones && exclusionZones && exclusionZones.length > 0 && (
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-10" viewBox="0 0 100 100" preserveAspectRatio="none">
+              {exclusionZones.map((zone, idx) => {
+                if (zone.points.length < 3) return null;
+                const color = ZONE_COLORS[idx % ZONE_COLORS.length];
+                return (
+                  <polygon
+                    key={zone.id}
+                    points={zone.points.map(([x, y]) => `${x * 100},${y * 100}`).join(' ')}
+                    fill={color}
+                    fillOpacity={0.2}
+                    stroke={color}
+                    strokeWidth={0.6}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                );
+              })}
+            </svg>
           )}
 
           {/* Video Error Message */}
@@ -384,14 +414,16 @@ export const TenSecondPlaybackModal: React.FC<TenSecondPlaybackModalProps> = ({
               </div>
 
               <button
-                onClick={() => setShowBox(!showBox)}
-                className={`px-3 py-1.5 rounded-xl text-[10px] uppercase font-bold border transition-colors ${
-                  showBox
+                onClick={() => setShowZones(!showZones)}
+                disabled={!exclusionZones || exclusionZones.length === 0}
+                title={exclusionZones && exclusionZones.length > 0 ? undefined : 'No exclusion zones configured for this camera'}
+                className={`px-3 py-1.5 rounded-xl text-[10px] uppercase font-bold border transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                  showZones
                     ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/40'
                     : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
                 }`}
               >
-                Box {showBox ? '✓' : '✗'}
+                Zones {showZones ? '✓' : '✗'}
               </button>
             </div>
           </div>
@@ -426,8 +458,7 @@ function drawPlaybackScene(
   width: number,
   height: number,
   event: FrigateEvent,
-  timeSec: number,
-  showBox: boolean
+  timeSec: number
 ) {
   ctx.clearRect(0, 0, width, height);
 
@@ -501,19 +532,4 @@ function drawPlaybackScene(
     ctx.fillRect(pixelX + boxW * 0.2, pixelY + boxH * 0.2, boxW * 0.6, boxH * 0.6);
   }
   ctx.restore();
-
-  // Draw Bounding Box & tracking tag
-  if (showBox) {
-    ctx.strokeStyle = '#10b981';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(pixelX, pixelY, boxW, boxH);
-
-    // Label tag
-    ctx.fillStyle = '#10b981';
-    ctx.fillRect(pixelX, pixelY - 20, Math.max(90, ctx.measureText(event.label).width + 30), 20);
-
-    ctx.fillStyle = '#000000';
-    ctx.font = 'bold 10px monospace';
-    ctx.fillText(`${event.label.toUpperCase()} ${Math.round(event.score * 100)}%`, pixelX + 5, pixelY - 6);
-  }
 }

@@ -180,6 +180,12 @@ export interface DiscordNotificationConfig {
   includeThumbnail?: boolean;
 }
 
+export interface ExclusionZone {
+  id: string;
+  name: string;
+  points: [number, number][]; // [x, y] normalized 0..1
+}
+
 export interface NotificationFilterConfig {
   minImportance: 'all' | 'alert_only';
   minThreatLevel: 'all' | 'medium_high' | 'high_only';
@@ -192,6 +198,11 @@ export interface NotificationFilterConfig {
   allCamerasMuted?: boolean;
   cooldownSeconds: number;
   ignoreParkedCars?: boolean;
+  /** Per-camera regions where a detection's box centroid falling inside
+   *  silently skips the notification, regardless of what Frigate itself
+   *  thinks about the object (its own `stationary` flag can be unreliable
+   *  for parked cars under changing light/shadow). Keyed by camera id. */
+  exclusionZones?: Record<string, ExclusionZone[]>;
 }
 
 export interface NotificationSettings {

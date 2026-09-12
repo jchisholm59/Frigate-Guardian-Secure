@@ -26,8 +26,10 @@ import {
   Plane,
   CloudSun,
   Sunrise,
+  Target,
 } from 'lucide-react';
-import { NotificationSettings, NotificationLog, BirdNetConfig, TidalConfig, TidalStation, FlightsConfig, WeatherConfig } from '../types';
+import { NotificationSettings, NotificationLog, BirdNetConfig, TidalConfig, TidalStation, FlightsConfig, WeatherConfig, ExclusionZone } from '../types';
+import { ExclusionZoneModal } from './ExclusionZoneModal';
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   gmail: {
@@ -100,7 +102,7 @@ const DEFAULT_WEATHER: WeatherConfig = DEFAULT_NOTIFICATION_SETTINGS.weather!;
 interface NotificationSettingsViewProps {
   settings: NotificationSettings;
   onUpdateSettings: (newSettings: NotificationSettings) => void;
-  availableCameras?: { id: string; name: string }[];
+  availableCameras?: { id: string; name: string; liveImageUrl?: string }[];
 }
 
 export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> = ({
@@ -420,6 +422,13 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
     } else {
       updateFilters({ selectedCameras: updated });
     }
+  };
+
+  const [exclusionModalCameraId, setExclusionModalCameraId] = useState<string | null>(null);
+  const handleSaveExclusionZones = (cameraId: string, zones: ExclusionZone[]) => {
+    updateFilters({
+      exclusionZones: { ...(localSettings.filters.exclusionZones || {}), [cameraId]: zones },
+    });
   };
 
   return (
@@ -1845,6 +1854,43 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
             </div>
           )}
 
+          {/* Exclusion Zones */}
+          {availableCameras.length > 0 && (
+            <div className="space-y-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                <Target className="w-3.5 h-3.5 text-red-400" />
+                Exclusion Zones
+              </label>
+              <div className="space-y-1.5">
+                {availableCameras.map((cam) => {
+                  const zoneCount = localSettings.filters.exclusionZones?.[cam.id]?.length || 0;
+                  return (
+                    <button
+                      key={cam.id}
+                      type="button"
+                      onClick={() => setExclusionModalCameraId(cam.id)}
+                      className="w-full flex items-center justify-between px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-left transition-all"
+                    >
+                      <span className="text-xs font-bold text-white">{cam.name}</span>
+                      <span
+                        className={`text-[10px] uppercase font-black tracking-wider px-2 py-0.5 rounded-lg ${
+                          zoneCount > 0 ? 'bg-red-950/40 text-red-300 border border-red-500/30' : 'text-slate-500'
+                        }`}
+                      >
+                        {zoneCount > 0 ? `${zoneCount} zone${zoneCount > 1 ? 's' : ''}` : 'None — click to add'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-slate-500">
+                Detections centered inside an excluded area are skipped before any alert is sent — independent of
+                Frigate's own "stationary" detection, which is often unreliable for parked cars under changing
+                light or shadow.
+              </p>
+            </div>
+          )}
+
           {/* Cooldown Timer */}
           <div className="space-y-2">
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
@@ -1999,6 +2045,15 @@ export const NotificationSettingsView: React.FC<NotificationSettingsViewProps> =
           )}
         </div>
       )}
+
+      <ExclusionZoneModal
+        isOpen={exclusionModalCameraId !== null}
+        onClose={() => setExclusionModalCameraId(null)}
+        cameras={availableCameras}
+        initialCameraId={exclusionModalCameraId || undefined}
+        exclusionZones={localSettings.filters.exclusionZones || {}}
+        onSave={handleSaveExclusionZones}
+      />
     </div>
   );
 };

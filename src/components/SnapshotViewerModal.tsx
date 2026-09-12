@@ -13,7 +13,9 @@ import {
   Shield,
   Eye,
 } from 'lucide-react';
-import { FrigateEvent, CameraStream } from '../types';
+import { FrigateEvent, CameraStream, ExclusionZone } from '../types';
+
+const ZONE_COLORS = ['#ef4444', '#f59e0b', '#a855f7', '#06b6d4', '#ec4899'];
 
 interface SnapshotViewerModalProps {
   isOpen: boolean;
@@ -21,6 +23,10 @@ interface SnapshotViewerModalProps {
   camera?: CameraStream;
   onClose: () => void;
   onOpenPlayback: (event: FrigateEvent) => void;
+  /** This camera's configured exclusion zones — shown instead of the raw
+   *  per-event detection box, which told you what fired but not why it
+   *  didn't get filtered. Seeing the actual zone here answers that. */
+  exclusionZones?: ExclusionZone[];
 }
 
 export const SnapshotViewerModal: React.FC<SnapshotViewerModalProps> = ({
@@ -29,9 +35,10 @@ export const SnapshotViewerModal: React.FC<SnapshotViewerModalProps> = ({
   camera,
   onClose,
   onOpenPlayback,
+  exclusionZones,
 }) => {
   const [zoomLevel, setZoomLevel] = useState<number>(1);
-  const [showBoundingBox, setShowBoundingBox] = useState<boolean>(true);
+  const [showZones, setShowZones] = useState<boolean>(true);
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
 
   if (!isOpen || !event) return null;
@@ -117,21 +124,26 @@ export const SnapshotViewerModal: React.FC<SnapshotViewerModalProps> = ({
                   (e.target as HTMLElement).style.display = 'none';
                 }}
               />
-              {/* Optional overlay bounding box if not baked in image */}
-              {showBoundingBox && event.box && (
-                <div
-                  className="absolute border-2 border-red-500 bg-red-500/10 pointer-events-none transition-all"
-                  style={{
-                    left: `${event.box.x * 100}%`,
-                    top: `${event.box.y * 100}%`,
-                    width: `${event.box.width * 100}%`,
-                    height: `${event.box.height * 100}%`,
-                  }}
-                >
-                  <span className="absolute -top-5 left-0 bg-red-600 text-white font-mono text-[9px] uppercase px-1 py-0.2 font-bold whitespace-nowrap">
-                    {event.label} ({Math.round(event.score * 100)}%)
-                  </span>
-                </div>
+              {/* This camera's exclusion zones — lets you see at a glance
+                  whether this detection should have been (or was) filtered. */}
+              {showZones && exclusionZones && exclusionZones.length > 0 && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  {exclusionZones.map((zone, idx) => {
+                    if (zone.points.length < 3) return null;
+                    const color = ZONE_COLORS[idx % ZONE_COLORS.length];
+                    return (
+                      <polygon
+                        key={zone.id}
+                        points={zone.points.map(([x, y]) => `${x * 100},${y * 100}`).join(' ')}
+                        fill={color}
+                        fillOpacity={0.2}
+                        stroke={color}
+                        strokeWidth={0.6}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    );
+                  })}
+                </svg>
               )}
             </div>
           ) : (
@@ -157,21 +169,24 @@ export const SnapshotViewerModal: React.FC<SnapshotViewerModalProps> = ({
                 </div>
               </div>
 
-              {/* Simulated bounding box */}
-              {showBoundingBox && (
-                <div
-                  className="absolute border-2 border-emerald-400 bg-emerald-400/10 rounded-lg"
-                  style={{
-                    left: `${(event.box?.x ?? 0.35) * 100}%`,
-                    top: `${(event.box?.y ?? 0.25) * 100}%`,
-                    width: `${(event.box?.width ?? 0.3) * 100}%`,
-                    height: `${(event.box?.height ?? 0.5) * 100}%`,
-                  }}
-                >
-                  <div className="absolute -top-6 left-0 bg-emerald-500 text-slate-950 font-black text-[10px] px-2 py-0.5 rounded uppercase tracking-wider">
-                    {event.label} • {Math.round(event.score * 100)}%
-                  </div>
-                </div>
+              {showZones && exclusionZones && exclusionZones.length > 0 && (
+                <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  {exclusionZones.map((zone, idx) => {
+                    if (zone.points.length < 3) return null;
+                    const color = ZONE_COLORS[idx % ZONE_COLORS.length];
+                    return (
+                      <polygon
+                        key={zone.id}
+                        points={zone.points.map(([x, y]) => `${x * 100},${y * 100}`).join(' ')}
+                        fill={color}
+                        fillOpacity={0.2}
+                        stroke={color}
+                        strokeWidth={0.6}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    );
+                  })}
+                </svg>
               )}
             </div>
           )}
@@ -199,14 +214,16 @@ export const SnapshotViewerModal: React.FC<SnapshotViewerModalProps> = ({
             </button>
             <div className="h-4 w-px bg-slate-800 mx-1" />
             <button
-              onClick={() => setShowBoundingBox(!showBoundingBox)}
-              className={`px-2.5 py-1 rounded-lg text-[10px] uppercase tracking-wider font-bold transition-colors ${
-                showBoundingBox
+              onClick={() => setShowZones(!showZones)}
+              disabled={!exclusionZones || exclusionZones.length === 0}
+              title={exclusionZones && exclusionZones.length > 0 ? undefined : 'No exclusion zones configured for this camera'}
+              className={`px-2.5 py-1 rounded-lg text-[10px] uppercase tracking-wider font-bold transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                showZones
                   ? 'bg-white text-slate-950 font-black'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              Box {showBoundingBox ? 'ON' : 'OFF'}
+              Zones {showZones ? 'ON' : 'OFF'}
             </button>
           </div>
 

@@ -2836,6 +2836,19 @@ Return a JSON object with:
   const notifiedEvents = new Map<string, number>();
   let lastGlobalNotificationTime = 0;
 
+  // Standard ray-casting point-in-polygon test, normalized 0..1 coordinates.
+  function isPointInPolygon(point: [number, number], polygon: [number, number][]): boolean {
+    const [px, py] = point;
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const [xi, yi] = polygon[i];
+      const [xj, yj] = polygon[j];
+      const intersects = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  }
+
   // Common notification dispatcher used by both API and MQTT handler
   async function dispatchNotification(event: any, settings: any) {
     if (!event || !settings) return { success: false, error: 'Event and settings required' };
@@ -2937,6 +2950,26 @@ Return a JSON object with:
             message: `Skipped: Camera "${event.camera}" not in selected list`,
           });
           return { success: true, skipped: true, reason: `Filtered out: camera "${event.camera}" not in selected list` };
+        }
+      }
+
+      // Exclusion zones: skip if the detection's box centroid falls inside a
+      // user-drawn region for this camera — e.g. a driveway parking spot
+      // that keeps re-triggering as "new" under changing light/shadow.
+      // Independent of Frigate's own `stationary` flag (see
+      // ignoreParkedCars above), which is exactly the heuristic that's
+      // unreliable in these cases — this only cares where in the frame the
+      // detection is, not what Frigate concluded about its motion.
+      const cameraZones = filters.exclusionZones?.[event.camera];
+      if (Array.isArray(cameraZones) && cameraZones.length > 0 && event.box) {
+        const centroid: [number, number] = [event.box.x + event.box.width / 2, event.box.y + event.box.height / 2];
+        const matchedZone = cameraZones.find((z: any) => Array.isArray(z.points) && z.points.length >= 3 && isPointInPolygon(centroid, z.points));
+        if (matchedZone) {
+          recordNotificationLog({
+            channel: 'all', status: 'skipped', eventId: event.id, camera: event.camera, label: event.label,
+            message: `Skipped: Detection centroid inside exclusion zone "${matchedZone.name}"`,
+          });
+          return { success: true, skipped: true, reason: `Filtered out: inside exclusion zone "${matchedZone.name}"` };
         }
       }
     }

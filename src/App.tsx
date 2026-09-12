@@ -815,6 +815,7 @@ function Dashboard({
             isLiveServerConnected={!activeServer.isSimulated}
             mqttStatus={mqttStatus}
             onOpenHostModal={() => setIsHostModalOpen(true)}
+            exclusionZones={notificationSettings.filters.exclusionZones}
           />
         )}
 
@@ -871,7 +872,7 @@ function Dashboard({
           <NotificationSettingsView
             settings={notificationSettings}
             onUpdateSettings={setNotificationSettings}
-            availableCameras={displayedCameras.map((c) => ({ id: c.id, name: c.name }))}
+            availableCameras={displayedCameras.map((c) => ({ id: c.id, name: c.name, liveImageUrl: c.liveImageUrl }))}
           />
         )}
 

@@ -937,7 +937,16 @@ async function startServer() {
                   recommendedAction: 'View bird in Yard Intelligence tab.',
                   box: { x: 0, y: 0, width: 1, height: 1 },
                   snapshotUrl: sighting.imageUrl, // Use the high-res bird photo as the "snapshot"
-                  clipUrl: sighting.audioUrl,
+                  // sighting.audioUrl is WatchTower's own relative proxy path
+                  // (/api/birds/proxy/audio/...) — fine for in-app playback
+                  // via same-origin fetch, but meaningless as a link in an
+                  // email/Slack/Discord message opened elsewhere. Link
+                  // directly to BirdNET-Go's own audio endpoint instead,
+                  // same as camera alerts link straight to Frigate's own
+                  // clip URL rather than through WatchTower.
+                  clipUrl: config.serverUrl && detectionId
+                    ? `${config.serverUrl.replace(/\/$/, '')}/api/v2/audio/${detectionId}`
+                    : undefined,
                 };
 
                 // dispatchNotification checks each channel's own global
@@ -2428,9 +2437,16 @@ Return a JSON object with:
     const zonesStr = event.zones && event.zones.length > 0 ? event.zones.join(', ') : 'None assigned';
     const threatUpper = (event.threatLevel || 'medium').toUpperCase();
 
-    // Construct clip URL if server URL is known
+    // Construct clip URL if server URL is known. A non-Frigate event (e.g.
+    // BirdNET) already carries its own real, absolute clip URL — prefer
+    // that over guessing a Frigate event path that won't exist for a
+    // non-Frigate detection ID.
     const frigateUrl = (activeMqttConfig.frigateServerUrl || '').replace(/\/$/, '');
-    const clipUrl = frigateUrl && event.id ? `${frigateUrl}/api/events/${event.id}/clip.mp4` : null;
+    const externalClipUrl = typeof event.clipUrl === 'string' && event.clipUrl.startsWith('http')
+      ? event.clipUrl
+      : null;
+    const clipUrl = externalClipUrl
+      || (frigateUrl && event.id ? `${frigateUrl}/api/events/${event.id}/clip.mp4` : null);
 
     const payload: any = {
       text: `🚨 *[Frigate Alert] ${labelUpper} Detected* on ${cameraName}`,
@@ -2526,10 +2542,14 @@ Return a JSON object with:
     const color = event.threatLevel === 'high' ? 0xe74c3c : (event.threatLevel === 'medium' ? 0xe67e22 : 0x2ecc71);
 
     // Construct URLs. A non-Frigate event (e.g. BirdNET) already carries its
-    // own real image URL — prefer that over guessing a Frigate event path
-    // that won't exist for a non-Frigate detection ID.
+    // own real image/clip URLs — prefer those over guessing a Frigate event
+    // path that won't exist for a non-Frigate detection ID.
     const frigateUrl = (activeMqttConfig.frigateServerUrl || '').replace(/\/$/, '');
-    const clipUrl = frigateUrl && event.id ? `${frigateUrl}/api/events/${event.id}/clip.mp4` : null;
+    const externalClipUrl = typeof event.clipUrl === 'string' && event.clipUrl.startsWith('http')
+      ? event.clipUrl
+      : null;
+    const clipUrl = externalClipUrl
+      || (frigateUrl && event.id ? `${frigateUrl}/api/events/${event.id}/clip.mp4` : null);
     const externalSnapshotUrl = typeof event.snapshotUrl === 'string' && event.snapshotUrl.startsWith('http')
       ? event.snapshotUrl
       : null;
@@ -2654,7 +2674,11 @@ Return a JSON object with:
     // Attempt to fetch snapshot if event has an ID and server URL is known
     let snapshotBuffer: Buffer | null = null;
     const frigateUrl = (activeMqttConfig.frigateServerUrl || '').replace(/\/$/, '');
-    const clipUrl = frigateUrl && event.id ? `${frigateUrl}/api/events/${event.id}/clip.mp4` : null;
+    const externalClipUrl = typeof event.clipUrl === 'string' && event.clipUrl.startsWith('http')
+      ? event.clipUrl
+      : null;
+    const clipUrl = externalClipUrl
+      || (frigateUrl && event.id ? `${frigateUrl}/api/events/${event.id}/clip.mp4` : null);
 
     // A non-Frigate event (e.g. BirdNET) already carries its own real image
     // URL — reconstructing one from event.id would hit Frigate's API with an

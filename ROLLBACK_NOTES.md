@@ -31,6 +31,33 @@ curl -s http://192.168.2.210:8100/api/birds/status
 
 ---
 
+## 2026-09-12 — Flight route city-name display
+
+Before deploying the flight-detail city-name change (commit `568437b`), a backup point was made of the last-known-good build (commit `0a4fbf2` — clip transcode cache pre-warming, running live and stable at the time).
+
+**Git tag:** [`pre-flight-route-cities-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-flight-route-cities-2026-09-12) at commit `0a4fbf2`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-flight-route-cities-20260912-083732/`
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-flight-route-cities-20260912-083732 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-flight-route-cities-2026-09-12 -- flights.ts src/components/FlightDetailModal.tsx src/types.ts && npm run build && pm2 restart watchtower"
+```
+
+After either, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## General pattern for future backup points
 
 Before deploying a change you might want to undo:

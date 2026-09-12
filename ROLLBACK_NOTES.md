@@ -118,6 +118,37 @@ curl -s http://192.168.2.210:8100/api/birds/status
 
 ---
 
+## 2026-09-12 — Role-based multi-user accounts (login now always on)
+
+Before deploying multi-user accounts (commit `a96a683`), a backup point was made of the last-known-good build (commit `215b9f2` — the opt-in login, which was still inert/off at the time, running live and stable).
+
+**Git tag:** [`pre-rbac-users-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-rbac-users-2026-09-12) at commit `215b9f2`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-rbac-users-20260912-091102/`
+
+⚠️ **This deploy is a real behavior change, not inert** — the app now always requires login. On this restart it seeded a fresh `admin`/`watchtower` account (`<data dir>/users.json`) and immediately started returning 401 to unauthenticated requests. Verified live: `/api/auth/status` → `authEnabled: true, authenticated: false`, `/api/birds/sightings` → 401 without a session. **Log in and change that password immediately** (top-right Account menu once logged in).
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-rbac-users-20260912-091102 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-rbac-users-2026-09-12 -- server.ts src/App.tsx src/components/Navbar.tsx .env.example && git rm -f src/components/AccountModal.tsx && npm run build && pm2 restart watchtower"
+```
+
+Note: reverting to the `215b9f2` opt-in-login version leaves `<data dir>/users.json` on disk unused — harmless, but delete it if you want a clean slate (`rm ~/.frigate-guardian/users.json` on the NUC), since if this feature is ever redeployed later it reads that file first rather than re-seeding.
+
+After either, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## General pattern for future backup points
 
 Before deploying a change you might want to undo:

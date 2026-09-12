@@ -4,6 +4,35 @@ Backup points created before risky deploys to the live NUC (`192.168.2.210:8100`
 
 ---
 
+## 2026-09-12 — All-cameras-muted fix
+
+Before deploying (commit `ab6dd95`), a backup point was made of the last-known-good build (commit `44d081c` — Add Frigate Server form defaults fix, running live and stable at the time).
+
+**Git tag:** [`pre-camera-mute-fix-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-camera-mute-fix-2026-09-12) at commit `44d081c`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-camera-mute-fix-20260912-125144/`
+
+Fixes "unable to disable all camera alerts": `filters.selectedCameras` is an allow-list where empty means "no filter, notify every camera" — muting cameras one at a time through Alert Rules empties that array on the last one, which both the UI and the server's dispatch check read as "no restriction," silently re-enabling everything. Added `filters.allCamerasMuted` as an unambiguous flag, plus a "Mute All" button. Verified live in the browser: muted 3 real cameras one at a time down to zero, confirmed the UI shows an explicit "all muted" banner instead of reverting, confirmed the persisted settings carry `allCamerasMuted: true`, and confirmed re-enabling one camera correctly drops back to an explicit allow-list.
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-camera-mute-fix-20260912-125144 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-camera-mute-fix-2026-09-12 -- server.ts src/types.ts src/components/NotificationSettingsView.tsx && npm run build && pm2 restart watchtower"
+```
+
+After either, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## 2026-09-12 — Add Frigate Server form stale-default fix
 
 Before deploying (commit `44d081c`), a backup point was made of the last-known-good build (commit `18319b3` — BirdNET channel fix, running live and stable at the time).

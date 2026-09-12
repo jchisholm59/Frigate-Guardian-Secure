@@ -176,6 +176,35 @@ curl -s http://192.168.2.210:8100/api/birds/status
 
 ---
 
+## 2026-09-12 — BirdNET Gmail/Discord dispatch fix + per-channel alerts
+
+Before deploying (commit `18319b3`), a backup point was made of the last-known-good build (commit `7014670` — Satellite map default, running live and stable at the time).
+
+**Git tag:** [`pre-birdnet-channel-fix-2026-09-12`](https://github.com/jchisholm59/WatchTower/tree/pre-birdnet-channel-fix-2026-09-12) at commit `7014670`
+
+**Build snapshot on the NUC:** `/home/jim/watchtower-backups/dist-pre-birdnet-channel-fix-20260912-102858/`
+
+Fixes BirdNET alerts throwing (and silently failing) on Gmail/Discord because `event.id` from BirdNET-Go is a number, not a string — `!event.id.startsWith('test-')` crashed, invisibly, for both senders. Also adds `birdnet.alertChannels` so bird alerts can target a different channel set than camera alerts. Verified locally end-to-end before deploy (login, toggled Gmail/Slack on, confirmed the channel chips select/deselect correctly and persist via `/api/notifications/settings`) — could not verify against the live instance directly since the login system (working as intended) means only the account holder can drive it.
+
+### To revert
+
+**Fast path — restores the exact build that was running, no rebuild, back in seconds:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && rm -rf dist && cp -r ../watchtower-backups/dist-pre-birdnet-channel-fix-20260912-102858 dist && pm2 restart watchtower"
+```
+
+**Full path — also rolls back the source tree to that commit:**
+```bash
+ssh 192.168.2.210 "cd /home/jim/Frigate-Guardian-Secure && git checkout pre-birdnet-channel-fix-2026-09-12 -- server.ts src/components/NotificationSettingsView.tsx src/types.ts && npm run build && pm2 restart watchtower"
+```
+
+After either, confirm it came back up:
+```bash
+curl -s http://192.168.2.210:8100/api/birds/status
+```
+
+---
+
 ## General pattern for future backup points
 
 Before deploying a change you might want to undo:

@@ -12,9 +12,17 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import mqtt, { type MqttClient } from 'mqtt';
 import nodemailer from 'nodemailer';
+import session from 'express-session';
+import bcrypt from 'bcryptjs';
 import { createTideService } from './tides';
 import { createFlightService } from './flights';
 import { createWeatherService } from './weather';
+
+declare module 'express-session' {
+  interface SessionData {
+    authenticated?: boolean;
+  }
+}
 
 // Probe an event clip's video codec via ffprobe so we only pay the transcode
 // cost for H.265 clips (Firefox/Chrome cannot decode HEVC at all, regardless
@@ -312,6 +320,22 @@ const MQTT_CONFIG_FILE = path.join(DATA_DIR, 'mqtt_config.json');
 const BIRD_SIGHTINGS_FILE = path.join(DATA_DIR, 'bird_sightings.json');
 const SERVERS_FILE = path.join(DATA_DIR, 'frigate_servers.json');
 
+// Signs the login session cookie. Generated once and persisted outside the
+// repo (in DATA_DIR, same as everything else here) so sessions survive a
+// restart/redeploy instead of every pm2 restart silently logging everyone
+// out. Never derived from a hardcoded default — that would make the cookie
+// signature guessable across every install of this app.
+const SESSION_SECRET_FILE = path.join(DATA_DIR, 'session_secret.txt');
+function getOrCreateSessionSecret(): string {
+  if (fs.existsSync(SESSION_SECRET_FILE)) {
+    const existing = fs.readFileSync(SESSION_SECRET_FILE, 'utf-8').trim();
+    if (existing) return existing;
+  }
+  const generated = crypto.randomBytes(48).toString('hex');
+  fs.writeFileSync(SESSION_SECRET_FILE, generated, { mode: 0o600 });
+  return generated;
+}
+
 // Migration: Move files from project .data directory to home directory if they exist
 try {
   const legacyDir = path.join(appDir, '.data');
@@ -469,6 +493,111 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 8100;
 
   app.use(express.json());
+
+  // --- Authentication --------------------------------------------------
+  // Lightweight single-user login gating every /api/* route (and the SSE
+  // event stream) behind a session cookie. Credentials come from .env
+  // (AUTH_USERNAME/AUTH_PASSWORD) rather than a managed user table — this
+  // is a one-person home NVR console, not a multi-tenant app, so a real
+  // user-account system would be pure maintenance overhead.
+  //
+  // If neither env var is set, auth stays OFF (matches behavior before
+  // this existed) so deploying this code can't lock anyone out before
+  // they've had a chance to set credentials — but it's never silent about
+  // running unprotected.
+  const AUTH_USERNAME = process.env.AUTH_USERNAME || '';
+  const AUTH_PASSWORD = process.env.AUTH_PASSWORD || '';
+  const authEnabled = Boolean(AUTH_USERNAME && AUTH_PASSWORD);
+  const authPasswordHash: Promise<string> | null = authEnabled ? bcrypt.hash(AUTH_PASSWORD, 10) : null;
+
+  if (authEnabled) {
+    console.log(`[Auth] Login required for user "${AUTH_USERNAME}"`);
+  } else {
+    console.warn('[Auth] AUTH_USERNAME/AUTH_PASSWORD not set in .env — running WITHOUT login protection. Anyone who can reach this server can use it.');
+  }
+
+  app.use(session({
+    secret: getOrCreateSessionSecret(),
+    name: 'watchtower.sid',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    },
+  }));
+
+  function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+    if (!authEnabled) return next();
+    if (req.session.authenticated) return next();
+    res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
+  // Basic brute-force throttle keyed by IP: an increasing delay before the
+  // password check runs after recent failures. Not a substitute for a
+  // strong password — just enough friction that a script can't hammer this
+  // endpoint at full speed if the app is ever reachable from the internet.
+  const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+  function loginDelayMs(ip: string): number {
+    const entry = loginAttempts.get(ip);
+    if (!entry || Date.now() > entry.resetAt) return 0;
+    return Math.min(entry.count * 500, 5000);
+  }
+  function recordLoginFailure(ip: string) {
+    const resetAt = Date.now() + 15 * 60 * 1000;
+    const entry = loginAttempts.get(ip);
+    if (entry && Date.now() <= entry.resetAt) {
+      entry.count += 1;
+      entry.resetAt = resetAt;
+    } else {
+      loginAttempts.set(ip, { count: 1, resetAt });
+    }
+  }
+
+  app.get('/api/auth/status', (req, res) => {
+    res.json({
+      success: true,
+      authEnabled,
+      authenticated: !authEnabled || Boolean(req.session.authenticated),
+    });
+  });
+
+  app.post('/api/auth/login', async (req, res) => {
+    if (!authEnabled || !authPasswordHash) {
+      return res.status(400).json({ success: false, error: 'Login is not configured on this server' });
+    }
+
+    const ip = req.ip || 'unknown';
+    const delay = loginDelayMs(ip);
+    if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+
+    const { username, password } = req.body || {};
+    const hash = await authPasswordHash;
+    const usernameOk = typeof username === 'string' && username === AUTH_USERNAME;
+    const passwordOk = typeof password === 'string' && await bcrypt.compare(password, hash);
+
+    if (!usernameOk || !passwordOk) {
+      recordLoginFailure(ip);
+      return res.status(401).json({ success: false, error: 'Invalid username or password' });
+    }
+
+    req.session.authenticated = true;
+    res.json({ success: true });
+  });
+
+  app.post('/api/auth/logout', (req, res) => {
+    req.session.destroy(() => {
+      res.json({ success: true });
+    });
+  });
+
+  // Everything under /api/* from here on requires a valid session (when
+  // auth is enabled). Registered AFTER the routes above so login/status
+  // stay reachable while logged out, and BEFORE every other /api/* route
+  // in the file — Express middleware only applies to routes registered
+  // after it in the stack.
+  app.use('/api', requireAuth);
 
   // Helper for Local Ollama or Gemini AI calls
   async function performAiQuery(prompt: string, isJson: boolean = true) {
@@ -2770,7 +2899,9 @@ Return a JSON object with:
   });
 
   // Download Zipped Project endpoint
-  app.get(['/api/download-zip', '/download-zip'], (_req, res) => {
+  // Explicit requireAuth here too: the bare '/download-zip' alias falls
+  // outside the '/api' prefix the blanket auth middleware above matches on.
+  app.get(['/api/download-zip', '/download-zip'], requireAuth, (_req, res) => {
     try {
       const staticZip = path.join(process.cwd(), 'public', 'watchtower-project.zip');
       if (fs.existsSync(staticZip)) {

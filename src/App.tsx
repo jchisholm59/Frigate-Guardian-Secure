@@ -27,6 +27,7 @@ import { CameraDetailModal } from './components/CameraDetailModal';
 import { HostConnectorModal } from './components/HostConnectorModal';
 import { GeminiSearchModal } from './components/GeminiSearchModal';
 import { DEFAULT_NOTIFICATION_SETTINGS, NotificationSettingsView } from './components/NotificationSettingsView';
+import { LoginView } from './components/LoginView';
 import { Bell, ShieldAlert, X } from 'lucide-react';
 
 const DEFAULT_SERVERS: FrigateServerConfig[] = [
@@ -50,7 +51,7 @@ const DEFAULT_SERVERS: FrigateServerConfig[] = [
   },
 ];
 
-export default function App() {
+function Dashboard({ authEnabled, onLogout }: { authEnabled: boolean; onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('live');
 
   // Dummy camera option state (persisted)
@@ -712,6 +713,8 @@ export default function App() {
         onOpenHostModal={() => setIsHostModalOpen(true)}
         onOpenAiSearch={() => setIsAiSearchModalOpen(true)}
         onTriggerSimulatedAlarm={handleTriggerSimulatedAlarm}
+        authEnabled={authEnabled}
+        onLogout={onLogout}
       />
 
       {/* Tide Alert Toast Banner */}
@@ -915,4 +918,44 @@ export default function App() {
       />
     </div>
   );
+}
+
+export default function App() {
+  // 'checking' avoids a flash of the login screen (or the full dashboard)
+  // before we actually know whether auth is on and whether this browser
+  // already has a valid session cookie.
+  const [authState, setAuthState] = useState<'checking' | 'needs-login' | 'ready'>('checking');
+  const [authEnabled, setAuthEnabled] = useState(false);
+
+  const checkAuthStatus = () => {
+    fetch('/api/auth/status')
+      .then((r) => r.json())
+      .then((data) => {
+        setAuthEnabled(Boolean(data.authEnabled));
+        setAuthState(data.authenticated ? 'ready' : 'needs-login');
+      })
+      .catch(() => {
+        // Server unreachable — nothing meaningful to gate on yet, but don't
+        // get stuck on the spinner forever either.
+        setAuthState('needs-login');
+      });
+  };
+
+  useEffect(() => {
+    checkAuthStatus();
+  }, []);
+
+  const handleLogout = () => {
+    fetch('/api/auth/logout', { method: 'POST' }).finally(() => setAuthState('needs-login'));
+  };
+
+  if (authState === 'checking') {
+    return <div className="min-h-screen bg-slate-950" />;
+  }
+
+  if (authState === 'needs-login') {
+    return <LoginView onSuccess={checkAuthStatus} />;
+  }
+
+  return <Dashboard authEnabled={authEnabled} onLogout={handleLogout} />;
 }

@@ -17,6 +17,7 @@ import {
   Waves,
   Plane,
   CloudSun,
+  LogOut,
 } from 'lucide-react';
 import { ActiveTab, SystemTelemetryData, MqttStatusInfo, NotificationSettings, AppTheme } from '../types';
 
@@ -35,6 +36,8 @@ interface NavbarProps {
   onOpenHostModal: () => void;
   onOpenAiSearch: () => void;
   onTriggerSimulatedAlarm: () => void;
+  authEnabled?: boolean;
+  onLogout?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -52,6 +55,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenHostModal,
   onOpenAiSearch,
   onTriggerSimulatedAlarm,
+  authEnabled,
+  onLogout,
 }) => {
   const [currentTime, setCurrentTime] = useState<string>('');
 
@@ -364,6 +369,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               />
             </button>
+
+            {/* Logout (only shown when login is actually configured/enforced) */}
+            {authEnabled && (
+              <button
+                id="btn-logout"
+                onClick={onLogout}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-900 border border-slate-800 hover:border-rose-500/40 text-slate-200 hover:text-rose-400 transition-all shadow-sm group cursor-pointer"
+                title="Log out"
+              >
+                <LogOut className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-400 transition-colors" />
+                <span className="hidden sm:inline text-[11px]">Logout</span>
+              </button>
+            )}
 
             {/* MQTT Live Indicator Pill */}
             <button

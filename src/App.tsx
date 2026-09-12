@@ -51,7 +51,13 @@ const DEFAULT_SERVERS: FrigateServerConfig[] = [
   },
 ];
 
-function Dashboard({ authEnabled, onLogout }: { authEnabled: boolean; onLogout: () => void }) {
+function Dashboard({
+  currentUser,
+  onLogout,
+}: {
+  currentUser: { username: string; role: 'admin' | 'standard' };
+  onLogout: () => void;
+}) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('live');
 
   // Dummy camera option state (persisted)
@@ -713,7 +719,7 @@ function Dashboard({ authEnabled, onLogout }: { authEnabled: boolean; onLogout: 
         onOpenHostModal={() => setIsHostModalOpen(true)}
         onOpenAiSearch={() => setIsAiSearchModalOpen(true)}
         onTriggerSimulatedAlarm={handleTriggerSimulatedAlarm}
-        authEnabled={authEnabled}
+        currentUser={currentUser}
         onLogout={onLogout}
       />
 
@@ -861,7 +867,7 @@ function Dashboard({ authEnabled, onLogout }: { authEnabled: boolean; onLogout: 
           />
         )}
 
-        {activeTab === 'notifications' && (
+        {activeTab === 'notifications' && currentUser.role === 'admin' && (
           <NotificationSettingsView
             settings={notificationSettings}
             onUpdateSettings={setNotificationSettings}
@@ -922,17 +928,22 @@ function Dashboard({ authEnabled, onLogout }: { authEnabled: boolean; onLogout: 
 
 export default function App() {
   // 'checking' avoids a flash of the login screen (or the full dashboard)
-  // before we actually know whether auth is on and whether this browser
-  // already has a valid session cookie.
+  // before we actually know whether this browser already has a valid
+  // session cookie.
   const [authState, setAuthState] = useState<'checking' | 'needs-login' | 'ready'>('checking');
-  const [authEnabled, setAuthEnabled] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ username: string; role: 'admin' | 'standard' } | null>(null);
 
   const checkAuthStatus = () => {
     fetch('/api/auth/status')
       .then((r) => r.json())
       .then((data) => {
-        setAuthEnabled(Boolean(data.authEnabled));
-        setAuthState(data.authenticated ? 'ready' : 'needs-login');
+        if (data.authenticated && data.username && data.role) {
+          setCurrentUser({ username: data.username, role: data.role });
+          setAuthState('ready');
+        } else {
+          setCurrentUser(null);
+          setAuthState('needs-login');
+        }
       })
       .catch(() => {
         // Server unreachable — nothing meaningful to gate on yet, but don't
@@ -946,16 +957,19 @@ export default function App() {
   }, []);
 
   const handleLogout = () => {
-    fetch('/api/auth/logout', { method: 'POST' }).finally(() => setAuthState('needs-login'));
+    fetch('/api/auth/logout', { method: 'POST' }).finally(() => {
+      setCurrentUser(null);
+      setAuthState('needs-login');
+    });
   };
 
   if (authState === 'checking') {
     return <div className="min-h-screen bg-slate-950" />;
   }
 
-  if (authState === 'needs-login') {
+  if (authState === 'needs-login' || !currentUser) {
     return <LoginView onSuccess={checkAuthStatus} />;
   }
 
-  return <Dashboard authEnabled={authEnabled} onLogout={handleLogout} />;
+  return <Dashboard currentUser={currentUser} onLogout={handleLogout} />;
 }

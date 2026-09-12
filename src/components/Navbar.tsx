@@ -18,8 +18,10 @@ import {
   Plane,
   CloudSun,
   LogOut,
+  UserCircle,
 } from 'lucide-react';
 import { ActiveTab, SystemTelemetryData, MqttStatusInfo, NotificationSettings, AppTheme } from '../types';
+import { AccountModal } from './AccountModal';
 
 interface NavbarProps {
   activeTab: ActiveTab;
@@ -36,8 +38,8 @@ interface NavbarProps {
   onOpenHostModal: () => void;
   onOpenAiSearch: () => void;
   onTriggerSimulatedAlarm: () => void;
-  authEnabled?: boolean;
-  onLogout?: () => void;
+  currentUser: { username: string; role: 'admin' | 'standard' };
+  onLogout: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -55,10 +57,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenHostModal,
   onOpenAiSearch,
   onTriggerSimulatedAlarm,
-  authEnabled,
+  currentUser,
   onLogout,
 }) => {
   const [currentTime, setCurrentTime] = useState<string>('');
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const isAdmin = currentUser.role === 'admin';
 
   useEffect(() => {
     const updateTime = () => {
@@ -301,23 +305,28 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Telemetry</span>
             </button>
 
-            <button
-              id="nav-tab-notifications"
-              onClick={() => setActiveTab('notifications')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs uppercase tracking-wider font-black rounded-xl transition-all ${
-                activeTab === 'notifications'
-                  ? 'bg-white text-slate-950 shadow-md font-black'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-800/70 border border-transparent'
-              }`}
-            >
-              <Bell className="w-3.5 h-3.5 text-red-400" />
-              <span>Notifications</span>
-              {(notificationSettings?.gmail.enabled ||
-                notificationSettings?.slack.enabled ||
-                notificationSettings?.discord.enabled) && (
-                <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
-              )}
-            </button>
+            {/* Notifications settings covers Gmail/Slack/Discord/Filters/
+                BirdNET/Tides/Flights(PiAware)/Weather — all shared system
+                config, so standard users don't get this tab at all. */}
+            {isAdmin && (
+              <button
+                id="nav-tab-notifications"
+                onClick={() => setActiveTab('notifications')}
+                className={`flex items-center gap-2 px-4 py-2 text-xs uppercase tracking-wider font-black rounded-xl transition-all ${
+                  activeTab === 'notifications'
+                    ? 'bg-white text-slate-950 shadow-md font-black'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/70 border border-transparent'
+                }`}
+              >
+                <Bell className="w-3.5 h-3.5 text-red-400" />
+                <span>Notifications</span>
+                {(notificationSettings?.gmail.enabled ||
+                  notificationSettings?.slack.enabled ||
+                  notificationSettings?.discord.enabled) && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]" />
+                )}
+              </button>
+            )}
           </nav>
 
           {/* Right Action Tools */}
@@ -370,24 +379,36 @@ export const Navbar: React.FC<NavbarProps> = ({
               />
             </button>
 
-            {/* Logout (only shown when login is actually configured/enforced) */}
-            {authEnabled && (
-              <button
-                id="btn-logout"
-                onClick={onLogout}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-900 border border-slate-800 hover:border-rose-500/40 text-slate-200 hover:text-rose-400 transition-all shadow-sm group cursor-pointer"
-                title="Log out"
-              >
-                <LogOut className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-400 transition-colors" />
-                <span className="hidden sm:inline text-[11px]">Logout</span>
-              </button>
-            )}
+            {/* Account (change password, and for admins, manage users) */}
+            <button
+              id="btn-account"
+              onClick={() => setIsAccountModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-200 hover:text-white transition-all shadow-sm group cursor-pointer"
+              title={`Account: ${currentUser.username} (${currentUser.role})`}
+            >
+              <UserCircle className="w-3.5 h-3.5 text-slate-400 group-hover:text-white transition-colors" />
+              <span className="hidden sm:inline text-[11px]">{currentUser.username}</span>
+            </button>
 
-            {/* MQTT Live Indicator Pill */}
+            {/* Logout */}
+            <button
+              id="btn-logout"
+              onClick={onLogout}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-slate-900 border border-slate-800 hover:border-rose-500/40 text-slate-200 hover:text-rose-400 transition-all shadow-sm group cursor-pointer"
+              title="Log out"
+            >
+              <LogOut className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-400 transition-colors" />
+              <span className="hidden sm:inline text-[11px]">Logout</span>
+            </button>
+
+            {/* MQTT Live Indicator Pill — view-only for standard users, since
+                clicking it opens Frigate server/MQTT configuration */}
             <button
               id="btn-mqtt-indicator"
-              onClick={onOpenHostModal}
+              onClick={isAdmin ? onOpenHostModal : undefined}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all shadow-sm ${
+                !isAdmin ? 'cursor-default' : ''
+              } ${
                 mqttStatus?.connected
                   ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/40 hover:bg-emerald-950/70'
                   : mqttStatus?.connecting
@@ -395,7 +416,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                   : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
               }`}
               title={
-                mqttStatus?.connected
+                !isAdmin
+                  ? mqttStatus?.connected
+                    ? `MQTT Live: Connected to ${mqttStatus.brokerUrl}`
+                    : 'MQTT status (admin required to configure)'
+                  : mqttStatus?.connected
                   ? `MQTT Live: Connected to ${mqttStatus.brokerUrl} (${mqttStatus.messageCount} msgs)`
                   : 'MQTT: Click to configure or view live broker status'
               }
@@ -419,12 +444,14 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Zap className="w-3.5 h-3.5 text-amber-400" />
             </button>
 
-            {/* Host / Simulator Connector */}
+            {/* Host / Simulator Connector — view-only for standard users */}
             <button
               id="btn-host-connector"
-              onClick={onOpenHostModal}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white transition-all shadow-sm"
-              title="Manage Frigate Servers & MQTT credentials"
+              onClick={isAdmin ? onOpenHostModal : undefined}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider bg-slate-900 border border-slate-800 text-slate-300 transition-all shadow-sm ${
+                isAdmin ? 'hover:border-slate-700 hover:text-white' : 'cursor-default'
+              }`}
+              title={isAdmin ? 'Manage Frigate Servers & MQTT credentials' : `Connected: ${activeServerName || 'SIMULATOR'} (admin required to change)`}
             >
               <Server className="w-3.5 h-3.5 text-slate-400" />
               <div className="flex items-center gap-1.5">
@@ -439,6 +466,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
       </div>
+
+      <AccountModal isOpen={isAccountModalOpen} onClose={() => setIsAccountModalOpen(false)} currentUser={currentUser} />
     </header>
   );
 };

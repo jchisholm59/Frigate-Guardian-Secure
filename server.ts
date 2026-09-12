@@ -20,8 +20,17 @@ import { createWeatherService } from './weather';
 
 declare module 'express-session' {
   interface SessionData {
-    authenticated?: boolean;
+    userId?: string;
+    role?: 'admin' | 'standard';
   }
+}
+
+interface StoredUser {
+  id: string;
+  username: string;
+  passwordHash: string;
+  role: 'admin' | 'standard';
+  createdAt: number;
 }
 
 // Probe an event clip's video codec via ffprobe so we only pay the transcode
@@ -336,6 +345,38 @@ function getOrCreateSessionSecret(): string {
   return generated;
 }
 
+// User accounts. Seeded with a default admin/watchtower account on first
+// boot if no file exists yet — change that password immediately after
+// first login. 'standard' users get the same app access as 'admin' except
+// for anything that changes shared system configuration (Frigate servers,
+// MQTT, notification/integration settings incl. BirdNET/PiAware/weather,
+// and user accounts themselves) — one wrong edit there affects everyone
+// using the app, not just the person who made it.
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+function loadUsers(): StoredUser[] {
+  if (fs.existsSync(USERS_FILE)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch (err) {
+      console.error(`[Auth] Failed to read ${USERS_FILE}, re-seeding default admin: ${(err as Error).message}`);
+    }
+  }
+  const seeded: StoredUser[] = [{
+    id: crypto.randomUUID(),
+    username: 'admin',
+    passwordHash: bcrypt.hashSync('watchtower', 10),
+    role: 'admin',
+    createdAt: Date.now(),
+  }];
+  fs.writeFileSync(USERS_FILE, JSON.stringify(seeded, null, 2), { mode: 0o600 });
+  console.warn('[Auth] No users.json found — seeded default account admin/watchtower. Log in and change this password immediately.');
+  return seeded;
+}
+function saveUsers(users: StoredUser[]) {
+  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), { mode: 0o600 });
+}
+
 // Migration: Move files from project .data directory to home directory if they exist
 try {
   const legacyDir = path.join(appDir, '.data');
@@ -495,25 +536,15 @@ async function startServer() {
   app.use(express.json());
 
   // --- Authentication --------------------------------------------------
-  // Lightweight single-user login gating every /api/* route (and the SSE
-  // event stream) behind a session cookie. Credentials come from .env
-  // (AUTH_USERNAME/AUTH_PASSWORD) rather than a managed user table — this
-  // is a one-person home NVR console, not a multi-tenant app, so a real
-  // user-account system would be pure maintenance overhead.
-  //
-  // If neither env var is set, auth stays OFF (matches behavior before
-  // this existed) so deploying this code can't lock anyone out before
-  // they've had a chance to set credentials — but it's never silent about
-  // running unprotected.
-  const AUTH_USERNAME = process.env.AUTH_USERNAME || '';
-  const AUTH_PASSWORD = process.env.AUTH_PASSWORD || '';
-  const authEnabled = Boolean(AUTH_USERNAME && AUTH_PASSWORD);
-  const authPasswordHash: Promise<string> | null = authEnabled ? bcrypt.hash(AUTH_PASSWORD, 10) : null;
-
-  if (authEnabled) {
-    console.log(`[Auth] Login required for user "${AUTH_USERNAME}"`);
-  } else {
-    console.warn('[Auth] AUTH_USERNAME/AUTH_PASSWORD not set in .env — running WITHOUT login protection. Anyone who can reach this server can use it.');
+  // Username/password login gating every /api/* route (and the SSE event
+  // stream) behind a session cookie, backed by the small user store in
+  // USERS_FILE (see loadUsers/saveUsers above). Two roles: 'admin' can do
+  // anything, 'standard' can do everything except touch shared system
+  // configuration or manage accounts — see requireAdmin below for exactly
+  // what that covers.
+  let users = loadUsers();
+  function findUser(username: string): StoredUser | undefined {
+    return users.find((u) => u.username.toLowerCase() === username.toLowerCase());
   }
 
   app.use(session({
@@ -529,9 +560,19 @@ async function startServer() {
   }));
 
   function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
-    if (!authEnabled) return next();
-    if (req.session.authenticated) return next();
+    if (req.session.userId) return next();
     res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+
+  // Gate for anything that changes shared system configuration: Frigate
+  // servers, MQTT, notification/integration settings (which is where
+  // BirdNET, PiAware/Flights, and Weather all live), and user accounts
+  // themselves. One bad edit there affects everyone using the app, so it's
+  // admin-only — a 'standard' account still gets full read/use access to
+  // the rest of the app, including live view, events, and its own password.
+  function requireAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+    if (req.session.role === 'admin') return next();
+    res.status(403).json({ success: false, error: 'Admin access required' });
   }
 
   // Basic brute-force throttle keyed by IP: an increasing delay before the
@@ -556,34 +597,33 @@ async function startServer() {
   }
 
   app.get('/api/auth/status', (req, res) => {
+    const user = req.session.userId ? users.find((u) => u.id === req.session.userId) : undefined;
     res.json({
       success: true,
-      authEnabled,
-      authenticated: !authEnabled || Boolean(req.session.authenticated),
+      authEnabled: true,
+      authenticated: Boolean(user),
+      username: user?.username,
+      role: user?.role,
     });
   });
 
   app.post('/api/auth/login', async (req, res) => {
-    if (!authEnabled || !authPasswordHash) {
-      return res.status(400).json({ success: false, error: 'Login is not configured on this server' });
-    }
-
     const ip = req.ip || 'unknown';
     const delay = loginDelayMs(ip);
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
 
     const { username, password } = req.body || {};
-    const hash = await authPasswordHash;
-    const usernameOk = typeof username === 'string' && username === AUTH_USERNAME;
-    const passwordOk = typeof password === 'string' && await bcrypt.compare(password, hash);
+    const user = typeof username === 'string' ? findUser(username) : undefined;
+    const passwordOk = user && typeof password === 'string' && await bcrypt.compare(password, user.passwordHash);
 
-    if (!usernameOk || !passwordOk) {
+    if (!user || !passwordOk) {
       recordLoginFailure(ip);
       return res.status(401).json({ success: false, error: 'Invalid username or password' });
     }
 
-    req.session.authenticated = true;
-    res.json({ success: true });
+    req.session.userId = user.id;
+    req.session.role = user.role;
+    res.json({ success: true, username: user.username, role: user.role });
   });
 
   app.post('/api/auth/logout', (req, res) => {
@@ -592,11 +632,96 @@ async function startServer() {
     });
   });
 
-  // Everything under /api/* from here on requires a valid session (when
-  // auth is enabled). Registered AFTER the routes above so login/status
-  // stay reachable while logged out, and BEFORE every other /api/* route
-  // in the file — Express middleware only applies to routes registered
-  // after it in the stack.
+  // Any logged-in user changes their own password (current password
+  // required). Deliberately not admin-gated — everyone manages their own
+  // credentials; admins additionally get the reset-password route below for
+  // when someone forgets theirs (there's no email-based recovery flow here).
+  app.post('/api/auth/change-password', async (req, res) => {
+    const user = users.find((u) => u.id === req.session.userId);
+    if (!user) return res.status(401).json({ success: false, error: 'Authentication required' });
+
+    const { currentPassword, newPassword } = req.body || {};
+    if (typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 8 characters' });
+    }
+    const currentOk = typeof currentPassword === 'string' && await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!currentOk) {
+      return res.status(401).json({ success: false, error: 'Current password is incorrect' });
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    saveUsers(users);
+    res.json({ success: true });
+  });
+
+  // --- Admin-only user management ---------------------------------------
+  app.get('/api/auth/users', requireAdmin, (_req, res) => {
+    res.json({
+      success: true,
+      users: users.map((u) => ({ id: u.id, username: u.username, role: u.role, createdAt: u.createdAt })),
+    });
+  });
+
+  app.post('/api/auth/users', requireAdmin, async (req, res) => {
+    const { username, password, role } = req.body || {};
+    if (typeof username !== 'string' || !username.trim()) {
+      return res.status(400).json({ success: false, error: 'Username is required' });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 8 characters' });
+    }
+    if (role !== 'admin' && role !== 'standard') {
+      return res.status(400).json({ success: false, error: 'Role must be "admin" or "standard"' });
+    }
+    if (findUser(username.trim())) {
+      return res.status(409).json({ success: false, error: 'That username is already taken' });
+    }
+
+    const newUser: StoredUser = {
+      id: crypto.randomUUID(),
+      username: username.trim(),
+      passwordHash: await bcrypt.hash(password, 10),
+      role,
+      createdAt: Date.now(),
+    };
+    users.push(newUser);
+    saveUsers(users);
+    res.json({ success: true, user: { id: newUser.id, username: newUser.username, role: newUser.role, createdAt: newUser.createdAt } });
+  });
+
+  app.post('/api/auth/users/:id/reset-password', requireAdmin, async (req, res) => {
+    const target = users.find((u) => u.id === req.params.id);
+    if (!target) return res.status(404).json({ success: false, error: 'User not found' });
+
+    const { newPassword } = req.body || {};
+    if (typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 8 characters' });
+    }
+
+    target.passwordHash = await bcrypt.hash(newPassword, 10);
+    saveUsers(users);
+    res.json({ success: true });
+  });
+
+  app.delete('/api/auth/users/:id', requireAdmin, (req, res) => {
+    const target = users.find((u) => u.id === req.params.id);
+    if (!target) return res.status(404).json({ success: false, error: 'User not found' });
+    if (target.id === req.session.userId) {
+      return res.status(400).json({ success: false, error: 'You cannot delete your own account while logged in as it' });
+    }
+    if (target.role === 'admin' && users.filter((u) => u.role === 'admin').length <= 1) {
+      return res.status(400).json({ success: false, error: 'Cannot delete the last remaining admin account' });
+    }
+
+    users = users.filter((u) => u.id !== target.id);
+    saveUsers(users);
+    res.json({ success: true });
+  });
+
+  // Everything under /api/* from here on requires a valid session.
+  // Registered AFTER the routes above so login/status/account routes stay
+  // reachable appropriately, and BEFORE every other /api/* route in the
+  // file — Express middleware only applies to routes registered after it.
   app.use('/api', requireAuth);
 
   // Helper for Local Ollama or Gemini AI calls
@@ -839,7 +964,7 @@ async function startServer() {
     connectToBirdMqtt();
   }
 
-  app.post('/api/notifications/settings', (req, res) => {
+  app.post('/api/notifications/settings', requireAdmin, (req, res) => {
     const { settings } = req.body;
     if (settings) {
       const birdnetChanged = JSON.stringify(persistentSettings.birdnet) !== JSON.stringify(settings.birdnet);
@@ -1017,7 +1142,7 @@ async function startServer() {
     res.json({ success: true, servers: persistentServers, persisted: fs.existsSync(SERVERS_FILE) });
   });
 
-  app.post('/api/frigate/servers', (req, res) => {
+  app.post('/api/frigate/servers', requireAdmin, (req, res) => {
     if (Array.isArray(req.body?.servers)) {
       persistentServers = req.body.servers;
       saveServersToDisk();
@@ -1857,7 +1982,7 @@ Return a JSON object with:
   }
 
   // Connect / Reconnect to MQTT Broker
-  app.post('/api/frigate/mqtt/connect', (req, res) => {
+  app.post('/api/frigate/mqtt/connect', requireAdmin, (req, res) => {
     const { brokerHost, port, protocol, topicPrefix, username, password, frigateServerUrl } = req.body;
     if (!brokerHost) {
       return res.status(400).json({ success: false, error: 'Broker Host is required' });
@@ -1902,7 +2027,7 @@ Return a JSON object with:
   });
 
   // Disconnect MQTT
-  app.post('/api/frigate/mqtt/disconnect', (_req, res) => {
+  app.post('/api/frigate/mqtt/disconnect', requireAdmin, (_req, res) => {
     if (activeMqttClient) {
       try {
         activeMqttClient.end(true);
